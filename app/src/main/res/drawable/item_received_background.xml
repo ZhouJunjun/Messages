@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- opaque on purpose: the actual color is applied as a tint in code (thread background color) -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
 
@@ -8,6 +9,6 @@
         android:topLeftRadius="@dimen/big_margin"
         android:topRightRadius="@dimen/big_margin" />
 
-    <solid android:color="@color/activated_item_foreground" />
+    <solid android:color="#FFFFFFFF" />
 
 </shape>

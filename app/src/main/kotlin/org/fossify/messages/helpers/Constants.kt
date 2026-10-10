@@ -57,6 +57,7 @@ const val THREAD_SNIPPET_TEXT_SIZE = "thread_snippet_text_size"
 const val THREAD_SNIPPET_TEXT_COLOR = "thread_snippet_text_color"
 const val THREAD_INFO_TEXT_SIZE = "thread_info_text_size"
 const val THREAD_INFO_TEXT_COLOR = "thread_info_text_color"
+const val LINK_TEXT_COLOR = "link_text_color"
 
 private const val PATH = "org.fossify.org.fossify.messages.action."
 const val MARK_AS_READ = PATH + "mark_as_read"
@@ -93,6 +94,7 @@ const val FILE_SIZE_1_MB = 1_048_576L
 const val FILE_SIZE_2_MB = 2_097_152L
 
 const val MESSAGES_LIMIT = 50
+const val SEARCH_RESULTS_LIMIT = 200
 const val MAX_MESSAGE_LENGTH = 5000
 
 // intent launch request codes

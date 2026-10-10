@@ -171,6 +171,11 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(THREAD_INFO_TEXT_COLOR, 0xff999999.toInt())
         set(value) = prefs.edit().putInt(THREAD_INFO_TEXT_COLOR, value).apply()
 
+    // links inside message bodies (default matches the Android link blue)
+    var linkTextColor: Int
+        get() = prefs.getInt(LINK_TEXT_COLOR, 0xff4d99e0.toInt())
+        set(value) = prefs.edit().putInt(LINK_TEXT_COLOR, value).apply()
+
     var customNotifications: Set<String>
         get() = prefs.getStringSet(CUSTOM_NOTIFICATIONS, HashSet<String>())!!
         set(customNotifications) = prefs.edit()

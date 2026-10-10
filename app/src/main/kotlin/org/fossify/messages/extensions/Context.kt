@@ -58,6 +58,7 @@ import org.fossify.messages.helpers.MAX_MESSAGE_LENGTH
 import org.fossify.messages.helpers.MESSAGES_LIMIT
 import org.fossify.messages.helpers.MessagingCache
 import org.fossify.messages.helpers.NotificationHelper
+import org.fossify.messages.helpers.SEARCH_RESULTS_LIMIT
 import org.fossify.messages.helpers.ShortcutHelper
 import org.fossify.messages.helpers.generateRandomId
 import org.fossify.messages.interfaces.AttachmentsDao
@@ -215,6 +216,83 @@ fun Context.getMessages(
         .sortedWith(compareBy<Message> { it.date }.thenBy { it.id })
         .takeLast(limit)
         .toMutableList() as ArrayList<Message>
+
+    return messages
+}
+
+/**
+ * Searches the telephony provider directly for SMS bodies containing [text].
+ *
+ * The locally cached `messages` table is emptied on upgrades and only re-populated for threads the
+ * user actually opens, so searching it always came back empty. Querying the provider guarantees
+ * results no matter what is cached.
+ */
+fun Context.searchMessages(text: String, limit: Int = SEARCH_RESULTS_LIMIT): ArrayList<Message> {
+    val uri = Sms.CONTENT_URI
+    val projection = arrayOf(
+        Sms._ID,
+        Sms.BODY,
+        Sms.TYPE,
+        Sms.ADDRESS,
+        Sms.DATE,
+        Sms.READ,
+        Sms.THREAD_ID,
+        Sms.SUBSCRIPTION_ID,
+        Sms.STATUS
+    )
+
+    val selection = "${Sms.BODY} LIKE ?"
+    val selectionArgs = arrayOf("%$text%")
+    val sortOrder = "${Sms.DATE} DESC LIMIT $limit"
+
+    val messages = ArrayList<Message>()
+    queryCursor(uri, projection, selection, selectionArgs, sortOrder, showErrors = true) { cursor ->
+        val senderNumber = cursor.getStringValue(Sms.ADDRESS) ?: return@queryCursor
+        val id = cursor.getLongValue(Sms._ID)
+        val body = cursor.getStringValue(Sms.BODY)
+        val type = cursor.getIntValue(Sms.TYPE)
+        val namePhoto = getNameAndPhotoFromPhoneNumber(senderNumber)
+        val date = (cursor.getLongValue(Sms.DATE) / 1000).toInt()
+        val read = cursor.getIntValue(Sms.READ) == 1
+        val thread = cursor.getLongValue(Sms.THREAD_ID)
+        val subscriptionId = cursor.getIntValueOr(
+            key = Sms.SUBSCRIPTION_ID,
+            defaultValue = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        )
+        val status = cursor.getIntValue(Sms.STATUS)
+
+        val phoneNumber = PhoneNumber(senderNumber, 0, "", senderNumber)
+        val participants = arrayListOf(
+            SimpleContact(
+                rawId = 0,
+                contactId = 0,
+                name = namePhoto.name,
+                photoUri = namePhoto.photoUri ?: "",
+                phoneNumbers = arrayListOf(phoneNumber),
+                birthdays = ArrayList(),
+                anniversaries = ArrayList()
+            )
+        )
+
+        messages.add(
+            Message(
+                id = id,
+                body = body,
+                type = type,
+                status = status,
+                participants = participants,
+                date = date,
+                read = read,
+                threadId = thread,
+                isMMS = false,
+                attachment = null,
+                senderPhoneNumber = senderNumber,
+                senderName = namePhoto.name,
+                senderPhotoUri = namePhoto.photoUri ?: "",
+                subscriptionId = subscriptionId
+            )
+        )
+    }
 
     return messages
 }

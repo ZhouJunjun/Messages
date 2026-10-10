@@ -139,11 +139,13 @@
     <string name="appearance_copyable_strings">可复制字符串</string>
     <string name="appearance_thread_snippet">会话短信详情</string>
     <string name="appearance_thread_info">会话短信信息</string>
+    <string name="appearance_link_color">链接颜色</string>
     <string name="color_black">黑色</string>
     <string name="color_dark_gray">深灰色</string>
     <string name="color_gray">灰色</string>
     <string name="color_light_gray">浅灰色</string>
     <string name="color_green">绿色</string>
+    <string name="color_link_blue">链接蓝</string>
     <string name="color_blue">蓝色</string>
     <string name="color_red">红色</string>
     <string name="color_orange">橙色</string>

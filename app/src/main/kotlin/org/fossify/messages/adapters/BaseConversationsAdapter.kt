@@ -21,9 +21,9 @@ import org.fossify.commons.extensions.getContrastColor
 import org.fossify.commons.extensions.getTextSize
 import org.fossify.commons.extensions.setupViewBackground
 import org.fossify.commons.helpers.FontHelper
-import org.fossify.commons.helpers.SimpleContactsHelper
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.views.MyRecyclerView
+import org.fossify.messages.R
 import org.fossify.messages.activities.SimpleActivity
 import org.fossify.messages.databinding.ItemConversationBinding
 import org.fossify.messages.extensions.config
@@ -199,33 +199,24 @@ abstract class BaseConversationsAdapter(
 
             setupBadgeCount(unreadCountBadge, isUnread, conversation.unreadCount)
 
-            // services: show the first up-to-4 characters of the service name as the avatar,
-            // regular conversations keep the contact image / letter icon
-            if (serviceName != null) {
+            // A colored avatar showing the first up-to-4 characters of the display name - the
+            // service name, or the contact name. Anything without a real name (unknown numbers,
+            // services without a signature) falls back to the neutral placeholder avatar.
+            val avatarName = serviceName ?: conversation.title.takeIf { isRealName(it) }
+            if (avatarName != null) {
                 conversationImage.beGone()
                 conversationAvatarText.apply {
                     beVisible()
-                    text = buildAvatarText(serviceName)
+                    text = buildAvatarText(avatarName)
                     backgroundTintList = ColorStateList.valueOf(properPrimaryColor)
                     setTextColor(properPrimaryColor.getContrastColor())
                 }
             } else {
                 conversationAvatarText.beGone()
-                conversationImage.beVisible()
-
-                // at group conversations we use an icon as the placeholder, not any letter
-                val placeholder = if (conversation.isGroupConversation) {
-                    SimpleContactsHelper(activity).getColoredGroupIcon(conversation.title)
-                } else {
-                    null
+                conversationImage.apply {
+                    beVisible()
+                    setImageResource(R.drawable.ic_default_avatar)
                 }
-
-                SimpleContactsHelper(activity).loadContactImage(
-                    path = conversation.photoUri,
-                    imageView = conversationImage,
-                    placeholderName = conversation.title,
-                    placeholderImage = placeholder
-                )
             }
 
             conversationCopyables.setupCopyableStrings(
@@ -249,6 +240,21 @@ abstract class BaseConversationsAdapter(
         } else {
             "${chars.substring(0, 2)}\n${chars.substring(2)}"
         }
+    }
+
+    /**
+     * True when [text] looks like an actual name instead of a bare phone number, so a conversation
+     * with no matched contact gets the neutral avatar rather than an avatar reading "+861".
+     */
+    private fun isRealName(text: String): Boolean {
+        if (text.isBlank()) {
+            return false
+        }
+
+        val withoutNumberChars = text.filterNot {
+            it.isWhitespace() || it == '-' || it == '+' || it == '(' || it == ')'
+        }
+        return withoutNumberChars.isNotEmpty() && !withoutNumberChars.all { it.isDigit() }
     }
 
     private fun setupBadgeCount(view: TextView, isUnread: Boolean, count: Int) {

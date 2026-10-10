@@ -33,6 +33,7 @@ import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.copyToClipboard
 import org.fossify.commons.extensions.getContrastColor
+import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getTextSize
 import org.fossify.commons.extensions.getTimeFormat
@@ -442,12 +443,17 @@ class ThreadAdapter(
         messageBinding.apply {
             alignStart(threadMessageMetadata)
             alignStart(threadMessageAttachmentsHolder)
-            alignStart(threadMessageBody)
+            alignStart(threadMessageBubble)
+
+            // the bubble itself carries the background, so the copyable strings sit inside it
+            threadMessageBubble.apply {
+                background = AppCompatResources.getDrawable(activity, R.drawable.item_received_background)
+                background?.applyColorFilter(activity.getProperBackgroundColor())
+            }
 
             threadMessageBody.apply {
-                background = AppCompatResources.getDrawable(activity, R.drawable.item_received_background)
                 setTextColor(activity.config.threadSnippetTextColor)
-                setLinkTextColor(activity.getProperPrimaryColor())
+                setLinkTextColor(activity.config.linkTextColor)
             }
         }
     }
@@ -456,16 +462,19 @@ class ThreadAdapter(
         messageBinding.apply {
             alignEnd(threadMessageMetadata)
             alignEnd(threadMessageAttachmentsHolder)
-            alignEnd(threadMessageBody)
+            alignEnd(threadMessageBubble)
 
             val primaryColor = activity.getProperPrimaryColor()
             val contrastColor = primaryColor.getContrastColor()
 
-            threadMessageBody.apply {
+            threadMessageBubble.apply {
                 background = AppCompatResources.getDrawable(activity, R.drawable.item_sent_background)
-                background.applyColorFilter(primaryColor)
+                background?.applyColorFilter(primaryColor)
+            }
+
+            threadMessageBody.apply {
                 setTextColor(contrastColor)
-                setLinkTextColor(contrastColor)
+                setLinkTextColor(activity.config.linkTextColor)
 
                 if (message.isScheduled) {
                     typeface = Typeface.create(FontHelper.getTypeface(activity), Typeface.ITALIC)

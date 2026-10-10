@@ -21,7 +21,7 @@ import org.fossify.messages.extensions.config
 
 /**
  * "Custom appearance" screen. Replaces the Commons customization entry and lets the user tweak
- * the text size + color of the six message-related labels. There is intentionally no font picker.
+ * the text size + color of the message-related labels. There is intentionally no font picker.
  */
 class CustomAppearanceActivity : SimpleActivity() {
 
@@ -36,6 +36,7 @@ class CustomAppearanceActivity : SimpleActivity() {
             0xff888888.toInt() to R.string.color_gray,
             0xff999999.toInt() to R.string.color_light_gray,
             0xff4caf50.toInt() to R.string.color_green,
+            0xff4d99e0.toInt() to R.string.color_link_blue,
             0xff1e88e5.toInt() to R.string.color_blue,
             0xfff44336.toInt() to R.string.color_red,
             0xffff9800.toInt() to R.string.color_orange,
@@ -83,14 +84,20 @@ class CustomAppearanceActivity : SimpleActivity() {
             { config.threadInfoTextSize }, { config.threadInfoTextSize = it },
             { config.threadInfoTextColor }, { config.threadInfoTextColor = it }
         )
+        // the link color has no dedicated size, only a color
+        addSettingRow(
+            R.string.appearance_link_color,
+            null, null,
+            { config.linkTextColor }, { config.linkTextColor = it }
+        )
 
         updateTextColors(binding.customAppearanceScrollview)
     }
 
     private fun addSettingRow(
         labelRes: Int,
-        sizeGetter: () -> Int,
-        sizeSetter: (Int) -> Unit,
+        sizeGetter: (() -> Int)?,
+        sizeSetter: ((Int) -> Unit)?,
         colorGetter: () -> Int,
         colorSetter: (Int) -> Unit,
     ) {
@@ -110,15 +117,19 @@ class CustomAppearanceActivity : SimpleActivity() {
             text = getString(labelRes)
         }
 
-        val sizeView = MyTextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            gravity = Gravity.CENTER
-            minWidth = dp(44)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+        val sizeView = if (sizeGetter != null && sizeSetter != null) {
+            MyTextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                gravity = Gravity.CENTER
+                minWidth = dp(44)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+            }
+        } else {
+            null
         }
 
         val colorDot = View(this).apply {
@@ -128,15 +139,29 @@ class CustomAppearanceActivity : SimpleActivity() {
         }
 
         fun refresh() {
-            sizeView.text = sizeGetter().toString()
-            sizeView.setTextColor(getProperTextColor())
+            sizeView?.text = sizeGetter?.invoke()?.toString() ?: ""
+            sizeView?.setTextColor(getProperTextColor())
             colorDot.backgroundTintList = ColorStateList.valueOf(colorGetter())
         }
 
-        label.setOnClickListener { showSizeDialog(sizeGetter(), sizeSetter, ::refresh) }
-        sizeView.setOnClickListener { showSizeDialog(sizeGetter(), sizeSetter, ::refresh) }
+        val onSizeClick = {
+            if (sizeGetter != null && sizeSetter != null) {
+                showSizeDialog(sizeGetter(), sizeSetter, ::refresh)
+            } else {
+                showColorDialog(colorGetter(), colorSetter, ::refresh)
+            }
+        }
+
+        label.setOnClickListener { onSizeClick() }
+        sizeView?.setOnClickListener { onSizeClick() }
         colorDot.setOnClickListener { showColorDialog(colorGetter(), colorSetter, ::refresh) }
         refresh()
+
+        // the row used to be added to the holder without its children, which left the whole
+        // screen blank - add the children explicitly, in order
+        row.addView(label)
+        sizeView?.let { row.addView(it) }
+        row.addView(colorDot)
 
         val divider = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))

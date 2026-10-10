@@ -163,11 +163,13 @@
     <string name="appearance_copyable_strings">Copyable strings</string>
     <string name="appearance_thread_snippet">Thread message snippet</string>
     <string name="appearance_thread_info">Thread message info</string>
+    <string name="appearance_link_color">Link color</string>
     <string name="color_black">Black</string>
     <string name="color_dark_gray">Dark gray</string>
     <string name="color_gray">Gray</string>
     <string name="color_light_gray">Light gray</string>
     <string name="color_green">Green</string>
+    <string name="color_link_blue">Link blue</string>
     <string name="color_blue">Blue</string>
     <string name="color_red">Red</string>
     <string name="color_orange">Orange</string>

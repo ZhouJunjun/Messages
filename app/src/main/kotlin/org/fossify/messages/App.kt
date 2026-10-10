@@ -9,6 +9,7 @@ import org.fossify.commons.FossifyApp
 import org.fossify.commons.extensions.hasPermission
 import org.fossify.commons.helpers.PERMISSION_READ_CONTACTS
 import org.fossify.commons.helpers.ensureBackgroundThread
+import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.rescheduleAllScheduledMessages
 import org.fossify.messages.helpers.MessagingCache
 
@@ -17,6 +18,13 @@ class App : FossifyApp() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // This build is a legitimate fork shipped under its own application id, but Commons'
+        // `checkAppSideloading()` decides it is a "fake version" (it probes for a drawable that the
+        // resource shrinker drops) and pops a "download the original app" dialog. Cache the
+        // "not sideloaded" answer before any activity reads it so the dialog never shows up.
+        config.appSideloadingStatus = 2
+
         if (hasPermission(PERMISSION_READ_CONTACTS)) {
             listOf(
                 ContactsContract.Contacts.CONTENT_URI,

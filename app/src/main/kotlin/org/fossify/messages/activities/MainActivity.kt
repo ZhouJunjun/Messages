@@ -21,7 +21,6 @@ import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beGoneIf
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
-import org.fossify.commons.extensions.checkAppSideloading
 import org.fossify.commons.extensions.checkWhatsNew
 import org.fossify.commons.extensions.convertToBitmap
 import org.fossify.commons.extensions.fadeIn
@@ -63,6 +62,7 @@ import org.fossify.messages.extensions.getConversations
 import org.fossify.messages.extensions.getMessages
 import org.fossify.messages.extensions.insertOrUpdateConversation
 import org.fossify.messages.extensions.messagesDB
+import org.fossify.messages.extensions.searchMessages
 import org.fossify.messages.helpers.SEARCHED_MESSAGE_ID
 import org.fossify.messages.helpers.isServiceConversation
 import org.fossify.messages.helpers.THREAD_ID
@@ -106,10 +106,6 @@ class MainActivity : SimpleActivity() {
         clearAllMessagesIfNeeded {
             loadMessages()
         }
-
-        if (checkAppSideloading()) {
-            return
-        }
     }
 
     override fun onResume() {
@@ -130,6 +126,7 @@ class MainActivity : SimpleActivity() {
 
         updateTextColors(binding.mainCoordinator)
         binding.searchHolder.setBackgroundColor(getProperBackgroundColor())
+        updateTabColors()
 
         val properPrimaryColor = getProperPrimaryColor()
         binding.noConversationsPlaceholder2.setTextColor(properPrimaryColor)
@@ -272,7 +269,7 @@ class MainActivity : SimpleActivity() {
     private fun initMessenger() {
         checkWhatsNewDialog()
         storeStateVariables()
-        setupBottomNav()
+        setupTopTabs()
         getCachedConversations()
         binding.noConversationsPlaceholder2.setOnClickListener {
             launchNewConversation()
@@ -440,15 +437,20 @@ class MainActivity : SimpleActivity() {
         }
     }
 
-    private fun setupBottomNav() {
-        binding.mainBottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_conversations -> switchTab(TAB_CONVERSATIONS)
-                R.id.nav_services -> switchTab(TAB_SERVICES)
-                R.id.nav_starred -> switchTab(TAB_STARRED)
-            }
-            true
-        }
+    private fun setupTopTabs() {
+        binding.tabConversations.setOnClickListener { switchTab(TAB_CONVERSATIONS) }
+        binding.tabServices.setOnClickListener { switchTab(TAB_SERVICES) }
+        binding.tabStarred.setOnClickListener { switchTab(TAB_STARRED) }
+        updateTabColors()
+    }
+
+    /** The selected tab uses the same color as the copyable strings, the rest follow the theme. */
+    private fun updateTabColors() {
+        val selectedColor = config.copyableTextColor
+        val normalColor = getProperTextColor()
+        binding.tabConversations.setTextColor(if (currentTab == TAB_CONVERSATIONS) selectedColor else normalColor)
+        binding.tabServices.setTextColor(if (currentTab == TAB_SERVICES) selectedColor else normalColor)
+        binding.tabStarred.setTextColor(if (currentTab == TAB_STARRED) selectedColor else normalColor)
     }
 
     private fun switchTab(tab: Int) {
@@ -458,6 +460,8 @@ class MainActivity : SimpleActivity() {
 
         currentTab = tab
         val isStarredTab = tab == TAB_STARRED
+
+        updateTabColors()
 
         binding.conversationsList.beVisibleIf(!isStarredTab)
         binding.conversationsProgressBar.beGone()
@@ -611,9 +615,15 @@ class MainActivity : SimpleActivity() {
         binding.searchPlaceholder2.beGoneIf(text.length >= 2)
         if (text.length >= 2) {
             ensureBackgroundThread {
-                val searchQuery = "%$text%"
-                val messages = messagesDB.getMessagesWithText(searchQuery)
-                val conversations = conversationsDB.getConversationsWithText(searchQuery)
+                // conversations are matched in memory (title / number / latest message), the
+                // messages come straight from the telephony provider so the search works even
+                // when the local cache has not been populated yet
+                val conversations = allConversationsForTabs.filter { conversation ->
+                    conversation.title.contains(text, ignoreCase = true) ||
+                        conversation.phoneNumber.contains(text, ignoreCase = true) ||
+                        conversation.snippet.contains(text, ignoreCase = true)
+                }
+                val messages = searchMessages(text)
                 if (text == lastSearchedText) {
                     showSearchResults(messages, conversations, text)
                 }
