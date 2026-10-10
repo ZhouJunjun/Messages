@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import org.fossify.commons.activities.ManageBlockedNumbersActivity
-import org.fossify.commons.dialogs.ChangeDateTimeFormatDialog
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.dialogs.SecurityDialog
@@ -12,15 +11,10 @@ import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getBlockedNumbers
-import org.fossify.commons.extensions.getFontSizeText
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.toast
 import org.fossify.commons.extensions.updateTextColors
 import org.fossify.commons.extensions.viewBinding
-import org.fossify.commons.helpers.FONT_SIZE_EXTRA_LARGE
-import org.fossify.commons.helpers.FONT_SIZE_LARGE
-import org.fossify.commons.helpers.FONT_SIZE_MEDIUM
-import org.fossify.commons.helpers.FONT_SIZE_SMALL
 import org.fossify.commons.helpers.NavigationIcon
 import org.fossify.commons.helpers.PROTECTION_FINGERPRINT
 import org.fossify.commons.helpers.SHOW_ALL_TABS
@@ -98,8 +92,6 @@ class SettingsActivity : SimpleActivity() {
         setupLanguage()
         setupManageBlockedNumbers()
         setupManageBlockedKeywords()
-        setupChangeDateTimeFormat()
-        setupFontSize()
         setupShowCharacterCounter()
         setupUseSimpleCharacters()
         setupSendOnEnter()
@@ -205,34 +197,6 @@ class SettingsActivity : SimpleActivity() {
         settingsManageBlockedKeywordsHolder.setOnClickListener {
             Intent(this@SettingsActivity, ManageBlockedKeywordsActivity::class.java).apply {
                 startActivity(this)
-            }
-        }
-    }
-
-    private fun setupChangeDateTimeFormat() = binding.apply {
-        settingsChangeDateTimeFormatHolder.setOnClickListener {
-            ChangeDateTimeFormatDialog(this@SettingsActivity) {
-                refreshConversations()
-            }
-        }
-    }
-
-    private fun setupFontSize() = binding.apply {
-        settingsFontSize.text = getFontSizeText()
-        settingsFontSizeHolder.setOnClickListener {
-            val items = arrayListOf(
-                RadioItem(FONT_SIZE_SMALL, getString(org.fossify.commons.R.string.small)),
-                RadioItem(FONT_SIZE_MEDIUM, getString(org.fossify.commons.R.string.medium)),
-                RadioItem(FONT_SIZE_LARGE, getString(org.fossify.commons.R.string.large)),
-                RadioItem(
-                    FONT_SIZE_EXTRA_LARGE,
-                    getString(org.fossify.commons.R.string.extra_large)
-                )
-            )
-
-            RadioGroupDialog(this@SettingsActivity, items, config.fontSize) {
-                config.fontSize = it as Int
-                settingsFontSize.text = getFontSizeText()
             }
         }
     }

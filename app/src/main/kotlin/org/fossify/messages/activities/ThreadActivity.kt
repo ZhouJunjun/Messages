@@ -579,10 +579,14 @@ class ThreadActivity : SimpleActivity() {
                 val layoutManager = binding.threadMessagesList.layoutManager as LinearLayoutManager
                 val lastPosition = itemCount - 1
                 val lastVisiblePosition = layoutManager.findLastVisibleItemPosition()
-                val shouldScrollToBottom =
-                    currentList.lastOrNull() != latestThreadItems.lastOrNull() &&
-                            lastPosition - lastVisiblePosition == 1
-                updateMessages(latestThreadItems, if (shouldScrollToBottom) lastPosition else -1)
+                // The list no longer uses stackFromEnd (1.0.3), so short conversations sit at
+                // the top. Make sure the first fill and new messages still land at the bottom.
+                val isInitialLoad = currentList.isEmpty()
+                val shouldScrollToBottom = isInitialLoad ||
+                        (currentList.lastOrNull() != latestThreadItems.lastOrNull() &&
+                                lastPosition - lastVisiblePosition == 1)
+                val target = latestThreadItems.lastIndex
+                updateMessages(latestThreadItems, if (shouldScrollToBottom && target >= 0) target else -1)
             }
         }
 

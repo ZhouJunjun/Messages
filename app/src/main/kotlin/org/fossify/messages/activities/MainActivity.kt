@@ -5,11 +5,14 @@ import android.app.role.RoleManager
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.graphics.Color
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.provider.Telephony
 import android.text.TextUtils
+import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import org.fossify.commons.dialogs.PermissionRequiredDialog
@@ -140,6 +143,8 @@ class MainActivity : SimpleActivity() {
         binding.conversationsProgressBar.setIndicatorColor(properPrimaryColor)
         binding.conversationsProgressBar.trackColor = properPrimaryColor.adjustAlpha(LOWER_ALPHA)
         checkShortcut()
+        refreshListAppearance()
+        restoreAvatarTextColors()
     }
 
     override fun onPause() {
@@ -206,6 +211,41 @@ class MainActivity : SimpleActivity() {
     private fun storeStateVariables() {
         storedTextColor = getProperTextColor()
         storedFontSize = config.fontSize
+    }
+
+    /**
+     * Re-binds the visible rows.
+     *
+     * Both [updateTextColors] (a window-wide repaint, run on every resume) and the
+     * custom-appearance screen leave the lists showing stale colours / sizes, because DiffUtil
+     * never re-binds a row whose content did not change - that is why the appearance settings
+     * used to need an app restart, and why the avatars turned black after opening a
+     * conversation (1.0.3 spec).
+     */
+    @SuppressLint("NotifyDataSetChanged")
+    private fun refreshListAppearance() {
+        binding.conversationsList.adapter?.notifyDataSetChanged()
+        binding.starredList.adapter?.notifyDataSetChanged()
+    }
+
+    /**
+     * [updateTextColors] repaints every TextView of the window, which used to leave the list
+     * avatars with black text after coming back from a conversation (1.0.3 spec). The coloured
+     * avatar background always needs white text, so re-assert it right away - the full re-bind
+     * above only happens on the next layout pass.
+     */
+    private fun restoreAvatarTextColors() {
+        restoreAvatarTextColorsFor(binding.conversationsList, R.id.conversation_avatar_text)
+        restoreAvatarTextColorsFor(binding.starredList, R.id.starred_avatar_text)
+    }
+
+    private fun restoreAvatarTextColorsFor(list: ViewGroup, avatarId: Int) {
+        for (i in 0 until list.childCount) {
+            val avatar = list.getChildAt(i).findViewById<TextView>(avatarId) ?: continue
+            if (avatar.visibility == View.VISIBLE) {
+                avatar.setTextColor(Color.WHITE)
+            }
+        }
     }
 
     private fun updateMenuColors() {

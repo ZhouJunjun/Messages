@@ -444,7 +444,7 @@ class ThreadAdapter(
             alignStart(threadMessageMetadata)
             alignStart(threadMessageAttachmentsHolder)
             alignStart(threadMessageBubble)
-            applyBubbleMargins(threadMessageWrapper, startDp = 10, endDp = 20)
+            applyBubbleMargins(threadMessageWrapper, startDp = 10, endDp = 40)
 
             // the bubble itself carries the background, so the copyable strings sit inside it
             threadMessageBubble.apply {
@@ -464,7 +464,7 @@ class ThreadAdapter(
             alignEnd(threadMessageMetadata)
             alignEnd(threadMessageAttachmentsHolder)
             alignEnd(threadMessageBubble)
-            applyBubbleMargins(threadMessageWrapper, startDp = 20, endDp = 10)
+            applyBubbleMargins(threadMessageWrapper, startDp = 40, endDp = 10)
 
             val primaryColor = activity.getProperPrimaryColor()
             val contrastColor = primaryColor.getContrastColor()
@@ -496,8 +496,8 @@ class ThreadAdapter(
     }
 
     /**
-     * Received messages keep a 10dp gap on their own (left) side and stretch to 20dp from the
-     * right edge; sent messages mirror that. Requested by the 1.0.2 spec.
+     * Received messages keep a 10dp gap on their own (left) side and stretch to 40dp from the
+     * right edge; sent messages mirror that. Requested by the 1.0.3 spec.
      */
     private fun applyBubbleMargins(view: View, startDp: Int, endDp: Int) {
         val density = activity.resources.displayMetrics.density

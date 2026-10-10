@@ -29,8 +29,10 @@ import org.fossify.messages.activities.SimpleActivity
 import org.fossify.messages.databinding.ItemConversationBinding
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.getAllDrafts
+import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.extractCopyableStrings
 import org.fossify.messages.helpers.extractServiceName
+import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.models.Conversation
 import org.joda.time.DateTime
@@ -172,7 +174,7 @@ abstract class BaseConversationsAdapter(
             }
 
             conversationBodyShort.apply {
-                text = smsDraft ?: conversation.snippet
+                text = sanitizeForDisplay(smsDraft ?: conversation.snippet)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeSnippetTextSize.toFloat())
                 setTextColor(config.homeSnippetTextColor)
             }
@@ -203,13 +205,13 @@ abstract class BaseConversationsAdapter(
             // A colored avatar showing the first up-to-4 characters of the display name - the
             // service name, or the contact name. Anything without a real name (unknown numbers,
             // services without a signature) falls back to the neutral placeholder avatar.
-            val avatarName = serviceName ?: conversation.title.takeIf { isRealName(it) }
+            val avatarName = serviceName ?: conversation.title.takeIf { AvatarColors.isRealName(it) }
             if (avatarName != null) {
                 conversationImage.beGone()
                 conversationAvatarText.apply {
                     beVisible()
-                    text = buildAvatarText(avatarName)
-                    backgroundTintList = ColorStateList.valueOf(avatarColorFor(avatarName))
+                    text = AvatarColors.textFor(avatarName)
+                    backgroundTintList = ColorStateList.valueOf(AvatarColors.colorFor(avatarName))
                     setTextColor(Color.WHITE)
                 }
             } else {
@@ -233,43 +235,6 @@ abstract class BaseConversationsAdapter(
                 fontSizeSp = config.copyableTextSize.toFloat()
             )
         }
-    }
-
-    /**
-     * Lays the avatar text out 2 characters per line, as agreed: 1-2 characters stay on one
-     * line, 3-4 characters are split over two lines (2x2 grid).
-     */
-    private fun buildAvatarText(serviceName: String): String {
-        val chars = serviceName.trim().take(4)
-        return if (chars.length <= 2) {
-            chars
-        } else {
-            "${chars.substring(0, 2)}\n${chars.substring(2)}"
-        }
-    }
-
-    /**
-     * True when [text] looks like an actual name instead of a bare phone number, so a conversation
-     * with no matched contact gets the neutral avatar rather than an avatar reading "+861".
-     */
-    private fun isRealName(text: String): Boolean {
-        if (text.isBlank()) {
-            return false
-        }
-
-        val withoutNumberChars = text.filterNot {
-            it.isWhitespace() || it == '-' || it == '+' || it == '(' || it == ')'
-        }
-        return withoutNumberChars.isNotEmpty() && !withoutNumberChars.all { it.isDigit() }
-    }
-
-    /**
-     * Picks a stable, well-spread background colour for the text avatar, so that different
-     * contacts and services no longer all end up with the exact same colour.
-     */
-    private fun avatarColorFor(name: String): Int {
-        val index = (name.hashCode() % AVATAR_COLORS.size + AVATAR_COLORS.size) % AVATAR_COLORS.size
-        return AVATAR_COLORS[index]
     }
 
     private fun setupBadgeCount(view: TextView, isUnread: Boolean, count: Int) {
@@ -309,17 +274,5 @@ abstract class BaseConversationsAdapter(
 
     companion object {
         private const val MAX_UNREAD_BADGE_COUNT = 99
-
-        /** Material-ish palette used for the text avatars, mirroring the reference screenshots. */
-        private val AVATAR_COLORS = intArrayOf(
-            0xffef5350.toInt(),
-            0xffab47bc.toInt(),
-            0xff5c6bc0.toInt(),
-            0xff29b6f6.toInt(),
-            0xff26a69a.toInt(),
-            0xff66bb6a.toInt(),
-            0xffffa726.toInt(),
-            0xff8d6e63.toInt()
-        )
     }
 }

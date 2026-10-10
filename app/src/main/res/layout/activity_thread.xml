@@ -127,7 +127,7 @@
                 android:paddingBottom="@dimen/medium_margin"
                 android:scrollbars="none"
                 app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager"
-                app:stackFromEnd="true"
+                app:stackFromEnd="false"
                 tools:itemCount="3"
                 tools:listitem="@layout/item_message" />
 
