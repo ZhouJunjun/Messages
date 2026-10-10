@@ -53,8 +53,8 @@ import org.fossify.messages.BuildConfig
 import org.fossify.messages.R
 import org.fossify.messages.adapters.ConversationsAdapter
 import org.fossify.messages.adapters.SearchResultsAdapter
+import org.fossify.messages.adapters.StarredMessagesAdapter
 import org.fossify.messages.databinding.ActivityMainBinding
-import org.fossify.messages.extensions.checkAndDeleteOldRecycleBinMessages
 import org.fossify.messages.extensions.clearAllMessagesIfNeeded
 import org.fossify.messages.extensions.clearExpiredScheduledMessages
 import org.fossify.messages.extensions.config
@@ -64,6 +64,7 @@ import org.fossify.messages.extensions.getMessages
 import org.fossify.messages.extensions.insertOrUpdateConversation
 import org.fossify.messages.extensions.messagesDB
 import org.fossify.messages.helpers.SEARCHED_MESSAGE_ID
+import org.fossify.messages.helpers.isServiceConversation
 import org.fossify.messages.helpers.THREAD_ID
 import org.fossify.messages.helpers.THREAD_TITLE
 import org.fossify.messages.models.Conversation
@@ -73,6 +74,10 @@ import org.fossify.messages.models.SearchResult
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
+
+private const val TAB_CONVERSATIONS = 0
+private const val TAB_SERVICES = 1
+private const val TAB_STARRED = 2
 
 class MainActivity : SimpleActivity() {
     override var isSearchBarEnabled = true
@@ -84,6 +89,9 @@ class MainActivity : SimpleActivity() {
     private var lastSearchedText = ""
     private var bus: EventBus? = null
 
+    private var currentTab = TAB_CONVERSATIONS
+    private var allConversationsForTabs = ArrayList<Conversation>()
+
     private val binding by viewBinding(ActivityMainBinding::inflate)
 
     @SuppressLint("InlinedApi")
@@ -92,11 +100,9 @@ class MainActivity : SimpleActivity() {
         setContentView(binding.root)
         appLaunched(BuildConfig.APPLICATION_ID)
         setupOptionsMenu()
-        refreshMenuItems()
 
         setupEdgeToEdge(padBottomImeAndSystem = listOf(binding.conversationsList))
 
-        checkAndDeleteOldRecycleBinMessages()
         clearAllMessagesIfNeeded {
             loadMessages()
         }
@@ -109,7 +115,6 @@ class MainActivity : SimpleActivity() {
     override fun onResume() {
         super.onResume()
         updateMenuColors()
-        refreshMenuItems()
 
         getOrCreateConversationsAdapter().apply {
             if (storedTextColor != getProperTextColor()) {
@@ -177,20 +182,11 @@ class MainActivity : SimpleActivity() {
 
         binding.mainMenu.requireToolbar().setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
-                R.id.show_recycle_bin -> launchRecycleBin()
-                R.id.show_archived -> launchArchivedConversations()
                 R.id.settings -> launchSettings()
                 R.id.about -> launchAbout()
                 else -> return@setOnMenuItemClickListener false
             }
             return@setOnMenuItemClickListener true
-        }
-    }
-
-    private fun refreshMenuItems() {
-        binding.mainMenu.requireToolbar().menu.apply {
-            findItem(R.id.show_recycle_bin).isVisible = config.useRecycleBin
-            findItem(R.id.show_archived).isVisible = config.isArchiveAvailable
         }
     }
 
@@ -276,6 +272,7 @@ class MainActivity : SimpleActivity() {
     private fun initMessenger() {
         checkWhatsNewDialog()
         storeStateVariables()
+        setupBottomNav()
         getCachedConversations()
         binding.noConversationsPlaceholder2.setOnClickListener {
             launchNewConversation()
@@ -289,22 +286,14 @@ class MainActivity : SimpleActivity() {
     private fun getCachedConversations() {
         ensureBackgroundThread {
             val conversations = try {
-                conversationsDB.getNonArchived().toMutableList() as ArrayList<Conversation>
+                conversationsDB.getAll().toMutableList() as ArrayList<Conversation>
             } catch (_: Exception) {
                 ArrayList()
             }
 
-            val archived = try {
-                conversationsDB.getAllArchived()
-            } catch (_: Exception) {
-                listOf()
-            }
-
             runOnUiThread {
                 setupConversations(conversations, cached = true)
-                getNewConversations(
-                    (conversations + archived).toMutableList() as ArrayList<Conversation>
-                )
+                getNewConversations(conversations)
             }
             conversations.forEach {
                 clearExpiredScheduledMessages(it.threadId)
@@ -364,7 +353,7 @@ class MainActivity : SimpleActivity() {
                 }
             }
 
-            val allConversations = conversationsDB.getNonArchived() as ArrayList<Conversation>
+            val allConversations = conversationsDB.getAll() as ArrayList<Conversation>
             runOnUiThread {
                 setupConversations(allConversations)
             }
@@ -403,7 +392,14 @@ class MainActivity : SimpleActivity() {
         conversations: ArrayList<Conversation>,
         cached: Boolean = false,
     ) {
-        val sortedConversations = conversations
+        allConversationsForTabs = conversations
+
+        if (currentTab == TAB_STARRED) {
+            return
+        }
+
+        val filteredConversations = filterConversationsForTab(conversations)
+        val sortedConversations = filteredConversations
             .sortedWith(
                 compareByDescending<Conversation> {
                     config.pinnedConversations.contains(it.threadId.toString())
@@ -416,7 +412,7 @@ class MainActivity : SimpleActivity() {
             showOrHideProgress(conversations.isEmpty())
         } else {
             showOrHideProgress(false)
-            showOrHidePlaceholder(conversations.isEmpty())
+            showOrHidePlaceholder(filteredConversations.isEmpty())
         }
 
         try {
@@ -428,6 +424,94 @@ class MainActivity : SimpleActivity() {
                 }
             }
         } catch (_: Exception) {
+        }
+    }
+
+    private fun filterConversationsForTab(
+        conversations: ArrayList<Conversation>,
+    ): ArrayList<Conversation> {
+        return when (currentTab) {
+            TAB_SERVICES -> ArrayList(
+                conversations.filter { isServiceConversation(it.phoneNumber, it.snippet) }
+            )
+            else -> ArrayList(
+                conversations.filter { !isServiceConversation(it.phoneNumber, it.snippet) }
+            )
+        }
+    }
+
+    private fun setupBottomNav() {
+        binding.mainBottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_conversations -> switchTab(TAB_CONVERSATIONS)
+                R.id.nav_services -> switchTab(TAB_SERVICES)
+                R.id.nav_starred -> switchTab(TAB_STARRED)
+            }
+            true
+        }
+    }
+
+    private fun switchTab(tab: Int) {
+        if (currentTab == tab) {
+            return
+        }
+
+        currentTab = tab
+        val isStarredTab = tab == TAB_STARRED
+
+        binding.conversationsList.beVisibleIf(!isStarredTab)
+        binding.conversationsProgressBar.beGone()
+        binding.conversationsFastscroller.beVisibleIf(!isStarredTab)
+        binding.conversationsFab.beVisibleIf(!isStarredTab)
+        binding.starredList.beVisibleIf(isStarredTab)
+
+        binding.noConversationsPlaceholder.beGone()
+        binding.noConversationsPlaceholder2.beGone()
+        binding.noStarredPlaceholder.beGone()
+
+        if (isStarredTab) {
+            loadStarredMessages()
+        } else {
+            setupConversations(allConversationsForTabs)
+        }
+    }
+
+    private fun loadStarredMessages() {
+        ensureBackgroundThread {
+            val messages = try {
+                messagesDB.getStarredMessages()
+            } catch (_: Exception) {
+                emptyList<Message>()
+            }
+
+            runOnUiThread {
+                val isEmpty = messages.isEmpty()
+                binding.starredList.beVisibleIf(!isEmpty)
+                binding.noStarredPlaceholder.beVisibleIf(isEmpty)
+                getOrCreateStarredAdapter().submitList(messages)
+            }
+        }
+    }
+
+    private fun getOrCreateStarredAdapter(): StarredMessagesAdapter {
+        var currAdapter = binding.starredList.adapter
+        if (currAdapter == null) {
+            currAdapter = StarredMessagesAdapter(
+                activity = this,
+                recyclerView = binding.starredList,
+                itemClick = { handleStarredMessageClick(it) }
+            )
+            binding.starredList.adapter = currAdapter
+        }
+        return currAdapter as StarredMessagesAdapter
+    }
+
+    private fun handleStarredMessageClick(any: Any) {
+        val message = any as? Message ?: return
+        Intent(this, ThreadActivity::class.java).apply {
+            putExtra(THREAD_ID, message.threadId)
+            putExtra(THREAD_TITLE, message.senderName)
+            startActivity(this)
         }
     }
 
@@ -609,16 +693,6 @@ class MainActivity : SimpleActivity() {
                 (currAdapter as SearchResultsAdapter).updateItems(searchResults, searchedText)
             }
         }
-    }
-
-    private fun launchRecycleBin() {
-        hideKeyboard()
-        startActivity(Intent(applicationContext, RecycleBinConversationsActivity::class.java))
-    }
-
-    private fun launchArchivedConversations() {
-        hideKeyboard()
-        startActivity(Intent(applicationContext, ArchivedConversationsActivity::class.java))
     }
 
     private fun launchSettings() {

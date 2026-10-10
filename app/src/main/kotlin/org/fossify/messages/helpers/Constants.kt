@@ -41,20 +41,28 @@ const val SCHEDULED_MESSAGE_ID = "scheduled_message_id"
 const val SOFT_KEYBOARD_HEIGHT = "soft_keyboard_height"
 const val IS_MMS = "is_mms"
 const val MESSAGE_ID = "message_id"
-const val USE_RECYCLE_BIN = "use_recycle_bin"
-const val LAST_RECYCLE_BIN_CHECK = "last_recycle_bin_check"
-const val IS_RECYCLE_BIN = "is_recycle_bin"
-const val IS_ARCHIVE_AVAILABLE = "is_archive_available"
 const val CUSTOM_NOTIFICATIONS = "custom_notifications"
 const val IS_LAUNCHED_FROM_SHORTCUT = "is_launched_from_shortcut"
-const val KEEP_CONVERSATIONS_ARCHIVED = "keep_conversations_archived"
+
+// custom appearance
+const val HOME_TITLE_TEXT_SIZE = "home_title_text_size"
+const val HOME_TITLE_TEXT_COLOR = "home_title_text_color"
+const val HOME_SNIPPET_TEXT_SIZE = "home_snippet_text_size"
+const val HOME_SNIPPET_TEXT_COLOR = "home_snippet_text_color"
+const val HOME_INFO_TEXT_SIZE = "home_info_text_size"
+const val HOME_INFO_TEXT_COLOR = "home_info_text_color"
+const val COPYABLE_TEXT_SIZE = "copyable_text_size"
+const val COPYABLE_TEXT_COLOR = "copyable_text_color"
+const val THREAD_SNIPPET_TEXT_SIZE = "thread_snippet_text_size"
+const val THREAD_SNIPPET_TEXT_COLOR = "thread_snippet_text_color"
+const val THREAD_INFO_TEXT_SIZE = "thread_info_text_size"
+const val THREAD_INFO_TEXT_COLOR = "thread_info_text_color"
 
 private const val PATH = "org.fossify.org.fossify.messages.action."
 const val MARK_AS_READ = PATH + "mark_as_read"
 const val REPLY = PATH + "reply"
 
 // view types for the thread list view
-const val THREAD_DATE_TIME = 1
 const val THREAD_RECEIVED_MESSAGE = 2
 const val THREAD_SENT_MESSAGE = 3
 const val THREAD_SENT_MESSAGE_ERROR = 4

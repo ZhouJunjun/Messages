@@ -65,6 +65,7 @@ import org.fossify.messages.interfaces.ConversationsDao
 import org.fossify.messages.interfaces.DraftsDao
 import org.fossify.messages.interfaces.MessageAttachmentsDao
 import org.fossify.messages.interfaces.MessagesDao
+import org.fossify.messages.interfaces.StarredMessagesDao
 import org.fossify.messages.messaging.MessagingUtils
 import org.fossify.messages.messaging.MessagingUtils.Companion.ADDRESS_SEPARATOR
 import org.fossify.messages.messaging.SmsSender
@@ -75,7 +76,7 @@ import org.fossify.messages.models.Draft
 import org.fossify.messages.models.Message
 import org.fossify.messages.models.MessageAttachment
 import org.fossify.messages.models.NamePhoto
-import org.fossify.messages.models.RecycleBinMessage
+import org.fossify.messages.models.StarredMessage
 import org.xmlpull.v1.XmlPullParserException
 import java.io.FileNotFoundException
 import kotlin.time.Duration.Companion.minutes
@@ -96,6 +97,9 @@ val Context.messageAttachmentsDB: MessageAttachmentsDao
 
 val Context.messagesDB: MessagesDao
     get() = getMessagesDB().MessagesDao()
+
+val Context.starredMessagesDB: StarredMessagesDao
+    get() = getMessagesDB().StarredMessagesDao()
 
 val Context.draftsDB: DraftsDao
     get() = getMessagesDB().DraftsDao()
@@ -352,8 +356,6 @@ fun Context.getConversations(
     threadId: Long? = null,
     privateContacts: ArrayList<SimpleContact> = ArrayList(),
 ): ArrayList<Conversation> {
-    val archiveAvailable = config.isArchiveAvailable
-
     val uri = "${Threads.CONTENT_URI}?simple=true".toUri()
     val projection = mutableListOf(
         Threads._ID,
@@ -362,10 +364,6 @@ fun Context.getConversations(
         Threads.READ,
         Threads.RECIPIENT_IDS,
     )
-
-    if (archiveAvailable) {
-        projection += Threads.ARCHIVED
-    }
 
     var selection = "${Threads.MESSAGE_COUNT} > 0"
     var selectionArgs = arrayOf<String>()
@@ -426,8 +424,6 @@ fun Context.getConversations(
                 ) else ""
             val isGroupConversation = phoneNumbers.size > 1
             val read = cursor.getIntValue(Threads.READ) == 1
-            val archived =
-                if (archiveAvailable) cursor.getIntValue(Threads.ARCHIVED) == 1 else false
             val unreadCount = if (!read) unreadMap[id] ?: 0 else 0
             val conversation = Conversation(
                 threadId = id,
@@ -438,20 +434,9 @@ fun Context.getConversations(
                 photoUri = photoUri,
                 isGroupConversation = isGroupConversation,
                 phoneNumber = phoneNumbers.first(),
-                isArchived = archived,
                 unreadCount = unreadCount,
             )
             conversations.add(conversation)
-        }
-    } catch (sqliteException: SQLiteException) {
-        if (
-            sqliteException.message?.contains("no such column: archived") == true
-            && archiveAvailable
-        ) {
-            config.isArchiveAvailable = false
-            return getConversations(threadId, privateContacts)
-        } else {
-            showErrorToast(sqliteException)
         }
     } catch (e: Exception) {
         showErrorToast(e)
@@ -848,20 +833,6 @@ fun Context.insertNewSMS(
     }
 }
 
-fun Context.removeAllArchivedConversations(callback: (() -> Unit)? = null) {
-    ensureBackgroundThread {
-        try {
-            for (conversation in conversationsDB.getAllArchived()) {
-                deleteConversation(conversation.threadId)
-            }
-            toast(R.string.archive_emptied_successfully)
-            callback?.invoke()
-        } catch (_: Exception) {
-            toast(org.fossify.commons.R.string.unknown_error_occurred)
-        }
-    }
-}
-
 fun Context.deleteConversation(threadId: Long) {
     var uri = Sms.CONTENT_URI
     val selection = "${Sms.THREAD_ID} = ?"
@@ -892,85 +863,42 @@ fun Context.deleteConversation(threadId: Long) {
     }
 }
 
-fun Context.checkAndDeleteOldRecycleBinMessages(callback: (() -> Unit)? = null) {
-    if (
-        config.useRecycleBin
-        && config.lastRecycleBinCheck < System.currentTimeMillis() - DAY_SECONDS * 1000
-    ) {
-        config.lastRecycleBinCheck = System.currentTimeMillis()
-        ensureBackgroundThread {
-            try {
-                messagesDB.getOldRecycleBinMessages(
-                    timestamp = System.currentTimeMillis() - MONTH_SECONDS * 1000L
-                ).forEach { message ->
-                    deleteMessage(message.id, message.isMMS)
-                }
-                callback?.invoke()
-            } catch (_: Exception) {
-            }
-        }
-    }
-}
+// --- message starring -------------------------------------------------------
 
-fun Context.emptyMessagesRecycleBin() {
-    val messages = messagesDB.getAllRecycleBinMessages()
-    for (message in messages) {
-        deleteMessage(message.id, message.isMMS)
-    }
-}
-
-fun Context.emptyMessagesRecycleBinForConversation(threadId: Long) {
-    val messages = messagesDB.getThreadMessagesFromRecycleBin(threadId)
-    for (message in messages) {
-        deleteMessage(message.id, message.isMMS)
-    }
-}
-
-fun Context.restoreAllMessagesFromRecycleBinForConversation(threadId: Long) {
-    messagesDB.deleteThreadMessagesFromRecycleBin(threadId)
-}
-
-fun Context.moveMessageToRecycleBin(id: Long) {
+fun Context.starMessage(messageId: Long) {
     try {
-        messagesDB.insertRecycleBinEntry(RecycleBinMessage(id, System.currentTimeMillis()))
+        starredMessagesDB.insertOrUpdate(StarredMessage(messageId, System.currentTimeMillis()))
     } catch (e: Exception) {
         showErrorToast(e)
     }
 }
 
-fun Context.restoreMessageFromRecycleBin(id: Long) {
+fun Context.unstarMessage(messageId: Long) {
     try {
-        messagesDB.deleteFromRecycleBin(id)
+        starredMessagesDB.delete(messageId)
     } catch (e: Exception) {
         showErrorToast(e)
     }
 }
 
-fun Context.updateConversationArchivedStatus(threadId: Long, archived: Boolean) {
-    val uri = Threads.CONTENT_URI
-    val values = ContentValues().apply {
-        put(Threads.ARCHIVED, archived)
-    }
-    val selection = "${Threads._ID} = ?"
-    val selectionArgs = arrayOf(threadId.toString())
+fun Context.unstarMessages(messageIds: Collection<Long>) {
     try {
-        contentResolver.update(uri, values, selection, selectionArgs)
-    } catch (sqliteException: SQLiteException) {
-        if (
-            sqliteException.message?.contains("no such column: archived") == true
-            && config.isArchiveAvailable
-        ) {
-            config.isArchiveAvailable = false
-            return
-        } else {
-            throw sqliteException
-        }
+        messageIds.forEach { starredMessagesDB.delete(it) }
+    } catch (e: Exception) {
+        showErrorToast(e)
     }
-    if (archived) {
-        conversationsDB.moveToArchive(threadId)
-    } else {
-        conversationsDB.unarchive(threadId)
-    }
+}
+
+fun Context.isMessageStarred(messageId: Long): Boolean {
+    return starredMessagesDB.getAllIds().contains(messageId)
+}
+
+fun Context.getStarredMessageIds(): Set<Long> {
+    return starredMessagesDB.getAllIds().toHashSet()
+}
+
+fun Context.getStarredMessages(): List<Message> {
+    return messagesDB.getStarredMessages()
 }
 
 fun Context.deleteMessage(id: Long, isMMS: Boolean) {
@@ -1310,7 +1238,6 @@ fun Context.createTemporaryThread(
         phoneNumber = addresses.first(),
         isScheduled = true,
         usesCustomTitle = cachedConv?.usesCustomTitle == true,
-        isArchived = false,
         unreadCount = 0,
     )
     try {
@@ -1360,10 +1287,6 @@ fun Context.rescheduleAllScheduledMessages() {
 
 fun Context.getDefaultKeyboardHeight(): Int {
     return resources.getDimensionPixelSize(R.dimen.default_keyboard_height)
-}
-
-fun Context.shouldUnarchive(): Boolean {
-    return config.isArchiveAvailable && !config.keepConversationsArchived
 }
 
 fun Context.copyToUri(src: Uri, dst: Uri) {

@@ -49,20 +49,6 @@
             android:exported="true" />
 
         <activity
-            android:name=".activities.RecycleBinConversationsActivity"
-            android:configChanges="orientation"
-            android:exported="true"
-            android:label="@string/recycle_bin"
-            android:parentActivityName=".activities.MainActivity" />
-
-        <activity
-            android:name=".activities.ArchivedConversationsActivity"
-            android:configChanges="orientation"
-            android:exported="true"
-            android:label="@string/archived_conversations"
-            android:parentActivityName=".activities.MainActivity" />
-
-        <activity
             android:name=".activities.ThreadActivity"
             android:configChanges="orientation"
             android:exported="false"
@@ -129,6 +115,13 @@
             android:configChanges="orientation"
             android:exported="false"
             android:label="@string/customize_colors"
+            android:parentActivityName=".activities.SettingsActivity" />
+
+        <activity
+            android:name=".activities.CustomAppearanceActivity"
+            android:configChanges="orientation"
+            android:exported="false"
+            android:label="@string/custom_appearance"
             android:parentActivityName=".activities.SettingsActivity" />
 
         <activity

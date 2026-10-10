@@ -11,7 +11,6 @@ import org.fossify.commons.dialogs.SecurityDialog
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
-import org.fossify.commons.extensions.formatWithDeprecatedBadge
 import org.fossify.commons.extensions.getBlockedNumbers
 import org.fossify.commons.extensions.getFontSizeText
 import org.fossify.commons.extensions.getProperPrimaryColor
@@ -25,7 +24,6 @@ import org.fossify.commons.helpers.FONT_SIZE_SMALL
 import org.fossify.commons.helpers.NavigationIcon
 import org.fossify.commons.helpers.PROTECTION_FINGERPRINT
 import org.fossify.commons.helpers.SHOW_ALL_TABS
-import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.helpers.isTiramisuPlus
 import org.fossify.commons.models.RadioItem
@@ -33,8 +31,6 @@ import org.fossify.messages.R
 import org.fossify.messages.databinding.ActivitySettingsBinding
 import org.fossify.messages.dialogs.ExportMessagesDialog
 import org.fossify.messages.extensions.config
-import org.fossify.messages.extensions.emptyMessagesRecycleBin
-import org.fossify.messages.extensions.messagesDB
 import org.fossify.messages.helpers.FILE_SIZE_100_KB
 import org.fossify.messages.helpers.FILE_SIZE_1_MB
 import org.fossify.messages.helpers.FILE_SIZE_200_KB
@@ -52,7 +48,6 @@ import kotlin.system.exitProcess
 
 class SettingsActivity : SimpleActivity() {
     private var blockedNumbersAtPause = -1
-    private var recycleBinMessages = 0
     private val messagesFileType = "application/json"
     private val messageImportFileTypes = buildList {
         add("application/json")
@@ -111,11 +106,8 @@ class SettingsActivity : SimpleActivity() {
         setupEnableDeliveryReports()
         setupSendLongMessageAsMMS()
         setupGroupMessageAsMMS()
-        setupKeepConversationsArchived()
         setupLockScreenVisibility()
         setupMMSFileSizeLimit()
-        setupUseRecycleBin()
-        setupEmptyRecycleBin()
         setupAppPasswordProtection()
         setupMessagesExport()
         setupMessagesImport()
@@ -132,8 +124,6 @@ class SettingsActivity : SimpleActivity() {
             binding.settingsGeneralSettingsLabel,
             binding.settingsOutgoingMessagesLabel,
             binding.settingsNotificationsLabel,
-            binding.settingsArchivedMessagesLabel,
-            binding.settingsRecycleBinLabel,
             binding.settingsSecurityLabel,
             binding.settingsMigratingLabel
         ).forEach {
@@ -162,7 +152,7 @@ class SettingsActivity : SimpleActivity() {
 
     private fun setupCustomizeColors() = binding.apply {
         settingsColorCustomizationHolder.setOnClickListener {
-            startCustomizationActivity()
+            startActivity(Intent(this@SettingsActivity, CustomAppearanceActivity::class.java))
         }
     }
 
@@ -295,14 +285,6 @@ class SettingsActivity : SimpleActivity() {
         }
     }
 
-    private fun setupKeepConversationsArchived() = binding.apply {
-        settingsKeepConversationsArchived.isChecked = config.keepConversationsArchived
-        settingsKeepConversationsArchivedHolder.setOnClickListener {
-            settingsKeepConversationsArchived.toggle()
-            config.keepConversationsArchived = settingsKeepConversationsArchived.isChecked
-        }
-    }
-
     private fun setupLockScreenVisibility() = binding.apply {
         settingsLockScreenVisibility.text = getLockScreenVisibilityText()
         settingsLockScreenVisibilityHolder.setOnClickListener {
@@ -344,62 +326,6 @@ class SettingsActivity : SimpleActivity() {
             RadioGroupDialog(this@SettingsActivity, items, checkedItemId) {
                 config.mmsFileSizeLimit = it as Long
                 settingsMmsFileSizeLimit.text = getMMSFileLimitText()
-            }
-        }
-    }
-
-    private fun setupUseRecycleBin() = binding.apply {
-        updateRecycleBinButtons()
-        settingsUseRecycleBin.isChecked = config.useRecycleBin
-        settingsUseRecycleBin.text = formatWithDeprecatedBadge(
-            labelRes = org.fossify.commons.R.string.move_items_into_recycle_bin
-        )
-        settingsUseRecycleBinHolder.setOnClickListener {
-            settingsUseRecycleBin.toggle()
-            config.useRecycleBin = settingsUseRecycleBin.isChecked
-            updateRecycleBinButtons()
-        }
-    }
-
-    private fun updateRecycleBinButtons() = binding.apply {
-        settingsEmptyRecycleBinHolder.beVisibleIf(config.useRecycleBin)
-    }
-
-    private fun setupEmptyRecycleBin() = binding.apply {
-        ensureBackgroundThread {
-            recycleBinMessages = messagesDB.getArchivedCount()
-            runOnUiThread {
-                settingsEmptyRecycleBinSize.text =
-                    resources.getQuantityString(
-                        R.plurals.delete_messages,
-                        recycleBinMessages,
-                        recycleBinMessages
-                    )
-            }
-        }
-
-        settingsEmptyRecycleBinHolder.setOnClickListener {
-            if (recycleBinMessages == 0) {
-                toast(org.fossify.commons.R.string.recycle_bin_empty)
-            } else {
-                ConfirmationDialog(
-                    activity = this@SettingsActivity,
-                    message = "",
-                    messageId = R.string.empty_recycle_bin_messages_confirmation,
-                    positive = org.fossify.commons.R.string.yes,
-                    negative = org.fossify.commons.R.string.no
-                ) {
-                    ensureBackgroundThread {
-                        emptyMessagesRecycleBin()
-                    }
-                    recycleBinMessages = 0
-                    settingsEmptyRecycleBinSize.text =
-                        resources.getQuantityString(
-                            R.plurals.delete_messages,
-                            recycleBinMessages,
-                            recycleBinMessages
-                        )
-                }
             }
         }
     }

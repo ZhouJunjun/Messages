@@ -14,12 +14,13 @@ import org.fossify.messages.interfaces.ConversationsDao
 import org.fossify.messages.interfaces.DraftsDao
 import org.fossify.messages.interfaces.MessageAttachmentsDao
 import org.fossify.messages.interfaces.MessagesDao
+import org.fossify.messages.interfaces.StarredMessagesDao
 import org.fossify.messages.models.Attachment
 import org.fossify.messages.models.Conversation
 import org.fossify.messages.models.Draft
 import org.fossify.messages.models.Message
 import org.fossify.messages.models.MessageAttachment
-import org.fossify.messages.models.RecycleBinMessage
+import org.fossify.messages.models.StarredMessage
 
 @Database(
     entities = [
@@ -27,10 +28,10 @@ import org.fossify.messages.models.RecycleBinMessage
         Attachment::class,
         MessageAttachment::class,
         Message::class,
-        RecycleBinMessage::class,
+        StarredMessage::class,
         Draft::class
     ],
-    version = 11
+    version = 12
 )
 @TypeConverters(Converters::class)
 abstract class MessagesDatabase : RoomDatabase() {
@@ -42,6 +43,8 @@ abstract class MessagesDatabase : RoomDatabase() {
     abstract fun MessageAttachmentsDao(): MessageAttachmentsDao
 
     abstract fun MessagesDao(): MessagesDao
+
+    abstract fun StarredMessagesDao(): StarredMessagesDao
 
     abstract fun DraftsDao(): DraftsDao
 
@@ -68,6 +71,7 @@ abstract class MessagesDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_8_9)
                             .addMigrations(MIGRATION_9_10)
                             .addMigrations(MIGRATION_10_11)
+                            .addMigrations(MIGRATION_11_12)
                             .build()
                     }
                 }
@@ -172,6 +176,44 @@ abstract class MessagesDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_messages_thread_id_date` " +
                         "ON `messages` (`thread_id`, `date`)"
                 )
+            }
+        }
+
+        // removes the archive + recycle bin features and adds message starring.
+        // `archived` cannot be dropped with ALTER TABLE, so the conversations table is rebuilt;
+        // previously archived conversations simply become visible again.
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.apply {
+                    execSQL(
+                        "CREATE TABLE IF NOT EXISTS `conversations_new` (" +
+                            "`thread_id` INTEGER NOT NULL PRIMARY KEY, " +
+                            "`snippet` TEXT NOT NULL, " +
+                            "`date` INTEGER NOT NULL, " +
+                            "`read` INTEGER NOT NULL, " +
+                            "`title` TEXT NOT NULL, " +
+                            "`photo_uri` TEXT NOT NULL, " +
+                            "`is_group_conversation` INTEGER NOT NULL, " +
+                            "`phone_number` TEXT NOT NULL, " +
+                            "`is_scheduled` INTEGER NOT NULL DEFAULT 0, " +
+                            "`uses_custom_title` INTEGER NOT NULL DEFAULT 0, " +
+                            "`unread_count` INTEGER NOT NULL DEFAULT 0)"
+                    )
+
+                    execSQL(
+                        "INSERT OR IGNORE INTO conversations_new (thread_id, snippet, date, read, title, photo_uri, is_group_conversation, phone_number, is_scheduled, uses_custom_title, unread_count) " +
+                            "SELECT thread_id, snippet, date, read, title, photo_uri, is_group_conversation, phone_number, is_scheduled, uses_custom_title, unread_count FROM conversations"
+                    )
+
+                    execSQL("DROP TABLE conversations")
+                    execSQL("ALTER TABLE conversations_new RENAME TO conversations")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_conversations_id` ON `conversations` (`thread_id`)")
+
+                    execSQL("DROP TABLE IF EXISTS `recycle_bin_messages`")
+
+                    execSQL("CREATE TABLE IF NOT EXISTS `starred_messages` (`id` INTEGER NOT NULL PRIMARY KEY, `starred_ts` INTEGER NOT NULL)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_starred_messages_id` ON `starred_messages` (`id`)")
+                }
             }
         }
     }

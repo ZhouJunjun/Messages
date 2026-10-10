@@ -15,6 +15,7 @@
         android:id="@+id/main_nested_scrollview"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="56dp"
         android:fillViewport="true"
         android:scrollbars="none"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
@@ -85,6 +86,30 @@
                         app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager" />
 
                 </com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller>
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/no_starred_placeholder"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_centerHorizontal="true"
+                    android:layout_marginTop="@dimen/bigger_margin"
+                    android:alpha="0.8"
+                    android:gravity="center"
+                    android:paddingLeft="@dimen/activity_margin"
+                    android:paddingRight="@dimen/activity_margin"
+                    android:text="@string/no_starred_messages"
+                    android:textSize="@dimen/bigger_text_size"
+                    android:textStyle="italic"
+                    android:visibility="gone" />
+
+                <org.fossify.commons.views.MyRecyclerView
+                    android:id="@+id/starred_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:scrollbars="none"
+                    android:visibility="gone"
+                    app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager" />
             </RelativeLayout>
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
@@ -142,7 +167,16 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="@dimen/activity_margin"
+        android:layout_marginBottom="72dp"
         android:src="@drawable/ic_plus_vector"
         app:applyWindowInsets="true" />
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/main_bottom_nav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        app:elevation="8dp"
+        app:menu="@menu/menu_main_bottom" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

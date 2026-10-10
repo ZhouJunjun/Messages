@@ -115,7 +115,9 @@ android {
         )
     }
 
-    namespace = project.property("APP_ID").toString()
+    // namespace 固定为源码包根（源码 package 声明 + `import org.fossify.messages.R` 都依赖它）
+    // 与 applicationId（APP_ID）解耦：更换 app id 不应改动 R 类位置
+    namespace = "org.fossify.messages"
 
     lint {
         checkReleaseBuilds = false

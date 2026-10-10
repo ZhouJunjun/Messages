@@ -1,6 +1,7 @@
 package org.fossify.messages.adapters
 
 import android.annotation.SuppressLint
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Parcelable
 import android.util.TypedValue
@@ -13,8 +14,9 @@ import com.bumptech.glide.Glide
 import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import org.fossify.commons.adapters.MyRecyclerViewListAdapter
 import org.fossify.commons.extensions.applyColorFilter
+import org.fossify.commons.extensions.beGone
+import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
-import org.fossify.commons.extensions.formatDateOrTime
 import org.fossify.commons.extensions.getContrastColor
 import org.fossify.commons.extensions.getTextSize
 import org.fossify.commons.extensions.setupViewBackground
@@ -26,7 +28,12 @@ import org.fossify.messages.activities.SimpleActivity
 import org.fossify.messages.databinding.ItemConversationBinding
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.getAllDrafts
+import org.fossify.messages.helpers.extractCopyableStrings
+import org.fossify.messages.helpers.extractServiceName
+import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.models.Conversation
+import org.joda.time.DateTime
+import org.joda.time.LocalDate
 
 @Suppress("LeakingThis")
 abstract class BaseConversationsAdapter(
@@ -154,24 +161,27 @@ abstract class BaseConversationsAdapter(
 
             conversationFrame.isSelected = selectedKeys.contains(conversation.hashCode())
 
+            val config = activity.config
+            val serviceName = extractServiceName(conversation.snippet)
+
             conversationAddress.apply {
-                text = conversation.title
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * 1.2f)
+                text = serviceName ?: conversation.title
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeTitleTextSize.toFloat())
+                setTextColor(config.homeTitleTextColor)
             }
 
             conversationBodyShort.apply {
                 text = smsDraft ?: conversation.snippet
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * 0.9f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeSnippetTextSize.toFloat())
+                setTextColor(config.homeSnippetTextColor)
             }
 
             conversationDate.apply {
-                text = (conversation.date * 1000L).formatDateOrTime(
-                    context = context,
-                    hideTimeOnOtherDays = true,
-                    showCurrentYear = false
-                )
-
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * 0.8f)
+                val dateTime = DateTime(conversation.date * 1000L)
+                val isToday = dateTime.toLocalDate() == LocalDate.now()
+                text = dateTime.toString(if (isToday) "HH:mm:ss" else "yy/MM/dd HH:mm")
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeInfoTextSize.toFloat())
+                setTextColor(config.homeInfoTextColor)
             }
 
             val isUnread = !conversation.read
@@ -187,24 +197,57 @@ abstract class BaseConversationsAdapter(
             conversationBodyShort.setTypeface(customTypeface, style)
             conversationDate.setTypeface(customTypeface, style)
 
-            arrayListOf(conversationAddress, conversationBodyShort, conversationDate).forEach {
-                it.setTextColor(textColor)
-            }
-
             setupBadgeCount(unreadCountBadge, isUnread, conversation.unreadCount)
-            // at group conversations we use an icon as the placeholder, not any letter
-            val placeholder = if (conversation.isGroupConversation) {
-                SimpleContactsHelper(activity).getColoredGroupIcon(conversation.title)
+
+            // services: show the first up-to-4 characters of the service name as the avatar,
+            // regular conversations keep the contact image / letter icon
+            if (serviceName != null) {
+                conversationImage.beGone()
+                conversationAvatarText.apply {
+                    beVisible()
+                    text = buildAvatarText(serviceName)
+                    backgroundTintList = ColorStateList.valueOf(properPrimaryColor)
+                    setTextColor(properPrimaryColor.getContrastColor())
+                }
             } else {
-                null
+                conversationAvatarText.beGone()
+                conversationImage.beVisible()
+
+                // at group conversations we use an icon as the placeholder, not any letter
+                val placeholder = if (conversation.isGroupConversation) {
+                    SimpleContactsHelper(activity).getColoredGroupIcon(conversation.title)
+                } else {
+                    null
+                }
+
+                SimpleContactsHelper(activity).loadContactImage(
+                    path = conversation.photoUri,
+                    imageView = conversationImage,
+                    placeholderName = conversation.title,
+                    placeholderImage = placeholder
+                )
             }
 
-            SimpleContactsHelper(activity).loadContactImage(
-                path = conversation.photoUri,
-                imageView = conversationImage,
-                placeholderName = conversation.title,
-                placeholderImage = placeholder
+            conversationCopyables.setupCopyableStrings(
+                context = activity,
+                items = extractCopyableStrings(conversation.snippet),
+                textColor = config.copyableTextColor,
+                dividerColor = config.homeInfoTextColor,
+                fontSizeSp = config.copyableTextSize.toFloat()
             )
+        }
+    }
+
+    /**
+     * Lays the avatar text out 2 characters per line, as agreed: 1-2 characters stay on one
+     * line, 3-4 characters are split over two lines (2x2 grid).
+     */
+    private fun buildAvatarText(serviceName: String): String {
+        val chars = serviceName.trim().take(4)
+        return if (chars.length <= 2) {
+            chars
+        } else {
+            "${chars.substring(0, 2)}\n${chars.substring(2)}"
         }
     }
 

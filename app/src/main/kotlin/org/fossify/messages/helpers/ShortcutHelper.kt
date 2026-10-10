@@ -50,7 +50,6 @@ class ShortcutHelper(private val context: Context) {
             action = Intent.ACTION_VIEW
             putExtra(THREAD_ID, conv.threadId)
             putExtra(THREAD_TITLE, conv.title)
-            putExtra(IS_RECYCLE_BIN, false) // TODO: verify that thread isn't in recycle bin
             putExtra(IS_LAUNCHED_FROM_SHORTCUT, true)
             putExtra(THREAD_NUMBER, conv.phoneNumber.ifEmpty { "unknown_phone_number" })
             addCategory(Intent.CATEGORY_DEFAULT)
@@ -112,7 +111,6 @@ class ShortcutHelper(private val context: Context) {
                 phoneNumber = "",
                 isScheduled = false,
                 usesCustomTitle = false,
-                isArchived = false,
             )
             return buildShortcut(conv, capabilities)
         }
@@ -162,7 +160,7 @@ class ShortcutHelper(private val context: Context) {
         if (conv.isGroupConversation) {
             return true
         }
-        if (conv.isArchived || !conv.phoneNumber.isDigitsOnly()) {
+        if (!conv.phoneNumber.isDigitsOnly()) {
             return false
         }
         return true

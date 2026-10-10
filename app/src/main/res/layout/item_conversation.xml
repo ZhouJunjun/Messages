@@ -14,14 +14,32 @@
     android:paddingEnd="@dimen/activity_margin"
     android:paddingBottom="@dimen/medium_margin">
 
-    <ImageView
-        android:id="@+id/conversation_image"
-        android:layout_width="@dimen/list_icon_size_medium"
-        android:layout_height="@dimen/list_icon_size_medium"
+    <FrameLayout
+        android:id="@+id/conversation_avatar_holder"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         app:layout_constraintBottom_toBottomOf="@id/conversation_body_short"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/conversation_address"
-        tools:src="@mipmap/ic_launcher" />
+        app:layout_constraintTop_toTopOf="@id/conversation_address">
+
+        <ImageView
+            android:id="@+id/conversation_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            tools:src="@mipmap/ic_launcher" />
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/conversation_avatar_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/circle_background"
+            android:gravity="center"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="京东&#10;商城"
+            tools:visibility="visible" />
+    </FrameLayout>
 
     <org.fossify.commons.views.MyTextView
         android:id="@+id/conversation_address"
@@ -35,9 +53,9 @@
         android:textSize="@dimen/list_primary_text_size"
         app:layout_constraintBottom_toTopOf="@id/conversation_body_short"
         app:layout_constraintEnd_toStartOf="@id/conversation_date"
-        app:layout_constraintStart_toEndOf="@id/conversation_image"
+        app:layout_constraintStart_toEndOf="@id/conversation_avatar_holder"
         app:layout_constraintTop_toTopOf="parent"
-        tools:text="John" />
+        tools:text="京东" />
 
     <org.fossify.commons.views.MyTextView
         android:id="@+id/draft_indicator"
@@ -63,15 +81,15 @@
         android:layout_height="wrap_content"
         android:layout_marginEnd="@dimen/activity_margin"
         android:ellipsize="end"
-        android:maxLines="1"
+        android:maxLines="2"
         android:textAlignment="viewStart"
         android:textDirection="locale"
         android:textSize="@dimen/normal_text_size"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/conversation_copyables"
         app:layout_constraintEnd_toStartOf="@id/pin_indicator"
         app:layout_constraintStart_toEndOf="@id/draft_indicator"
         app:layout_constraintTop_toBottomOf="@id/conversation_address"
-        tools:text="Hey buddy!" />
+        tools:text="【申通快递】您好，您的快递77342864300046，已放在电梯门口箱子" />
 
     <org.fossify.commons.views.MyTextView
         android:id="@+id/conversation_date"
@@ -84,7 +102,7 @@
         app:layout_constraintBottom_toBottomOf="@id/conversation_address"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/conversation_address"
-        tools:text="13:30" />
+        tools:text="2026/01/02 12:30" />
 
     <ImageView
         android:id="@+id/pin_indicator"
@@ -111,5 +129,22 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/conversation_body_short"
         tools:text="42"
+        tools:visibility="visible" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/conversation_copyables"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/tiny_margin"
+        android:ellipsize="end"
+        android:lineSpacingExtra="2dp"
+        android:textDirection="locale"
+        android:textSize="@dimen/normal_text_size"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@id/conversation_address"
+        app:layout_constraintTop_toBottomOf="@id/conversation_body_short"
+        tools:text="77342864300046 │ 8830-99"
         tools:visibility="visible" />
 </androidx.constraintlayout.widget.ConstraintLayout>

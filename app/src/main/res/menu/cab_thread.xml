@@ -44,14 +44,14 @@
         android:title="@string/select_all"
         app:showAsAction="never" />
     <item
+        android:id="@+id/cab_star"
+        android:showAsAction="never"
+        android:title="@string/star_message"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/cab_properties"
         android:icon="@drawable/ic_info_vector"
         android:showAsAction="never"
         android:title="@string/properties"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/cab_restore"
-        android:showAsAction="never"
-        android:title="@string/restore"
         app:showAsAction="never" />
 </menu>

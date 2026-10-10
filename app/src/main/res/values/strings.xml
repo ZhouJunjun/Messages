@@ -149,4 +149,26 @@
         Haven't found some strings? There's more at
         https://github.com/FossifyOrg/Commons/tree/master/commons/src/main/res
     -->
+    <string name="tab_conversations">Conversations</string>
+    <string name="tab_service_messages">Service messages</string>
+    <string name="tab_starred_messages">Starred</string>
+    <string name="star_message">Star</string>
+    <string name="unstar_message">Unstar</string>
+    <string name="no_starred_messages">No starred messages</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="custom_appearance">Custom appearance</string>
+    <string name="appearance_home_title">Home message title</string>
+    <string name="appearance_home_snippet">Home message snippet</string>
+    <string name="appearance_home_info">Home message info</string>
+    <string name="appearance_copyable_strings">Copyable strings</string>
+    <string name="appearance_thread_snippet">Thread message snippet</string>
+    <string name="appearance_thread_info">Thread message info</string>
+    <string name="color_black">Black</string>
+    <string name="color_dark_gray">Dark gray</string>
+    <string name="color_gray">Gray</string>
+    <string name="color_light_gray">Light gray</string>
+    <string name="color_green">Green</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_red">Red</string>
+    <string name="color_orange">Orange</string>
 </resources>

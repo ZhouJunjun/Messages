@@ -115,19 +115,61 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(SOFT_KEYBOARD_HEIGHT, context.getDefaultKeyboardHeight())
         set(keyboardHeight) = prefs.edit().putInt(SOFT_KEYBOARD_HEIGHT, keyboardHeight).apply()
 
-    var useRecycleBin: Boolean
-        get() = prefs.getBoolean(USE_RECYCLE_BIN, false)
-        set(useRecycleBin) = prefs.edit().putBoolean(USE_RECYCLE_BIN, useRecycleBin).apply()
+    // --- custom appearance: sizes are stored in sp, colors as ARGB ints -------------
 
-    var lastRecycleBinCheck: Long
-        get() = prefs.getLong(LAST_RECYCLE_BIN_CHECK, 0L)
-        set(lastRecycleBinCheck) = prefs.edit().putLong(LAST_RECYCLE_BIN_CHECK, lastRecycleBinCheck)
-            .apply()
+    // home list: conversation title
+    var homeTitleTextSize: Int
+        get() = prefs.getInt(HOME_TITLE_TEXT_SIZE, 14)
+        set(value) = prefs.edit().putInt(HOME_TITLE_TEXT_SIZE, value).apply()
 
-    var isArchiveAvailable: Boolean
-        get() = prefs.getBoolean(IS_ARCHIVE_AVAILABLE, true)
-        set(isArchiveAvailable) = prefs.edit().putBoolean(IS_ARCHIVE_AVAILABLE, isArchiveAvailable)
-            .apply()
+    var homeTitleTextColor: Int
+        get() = prefs.getInt(HOME_TITLE_TEXT_COLOR, 0xff000000.toInt())
+        set(value) = prefs.edit().putInt(HOME_TITLE_TEXT_COLOR, value).apply()
+
+    // home list: message snippet
+    var homeSnippetTextSize: Int
+        get() = prefs.getInt(HOME_SNIPPET_TEXT_SIZE, 12)
+        set(value) = prefs.edit().putInt(HOME_SNIPPET_TEXT_SIZE, value).apply()
+
+    var homeSnippetTextColor: Int
+        get() = prefs.getInt(HOME_SNIPPET_TEXT_COLOR, 0xff555555.toInt())
+        set(value) = prefs.edit().putInt(HOME_SNIPPET_TEXT_COLOR, value).apply()
+
+    // home list: date / extra info
+    var homeInfoTextSize: Int
+        get() = prefs.getInt(HOME_INFO_TEXT_SIZE, 10)
+        set(value) = prefs.edit().putInt(HOME_INFO_TEXT_SIZE, value).apply()
+
+    var homeInfoTextColor: Int
+        get() = prefs.getInt(HOME_INFO_TEXT_COLOR, 0xff999999.toInt())
+        set(value) = prefs.edit().putInt(HOME_INFO_TEXT_COLOR, value).apply()
+
+    // copyable strings / verification codes
+    var copyableTextSize: Int
+        get() = prefs.getInt(COPYABLE_TEXT_SIZE, 12)
+        set(value) = prefs.edit().putInt(COPYABLE_TEXT_SIZE, value).apply()
+
+    var copyableTextColor: Int
+        get() = prefs.getInt(COPYABLE_TEXT_COLOR, 0xff4caf50.toInt())
+        set(value) = prefs.edit().putInt(COPYABLE_TEXT_COLOR, value).apply()
+
+    // thread view: message body
+    var threadSnippetTextSize: Int
+        get() = prefs.getInt(THREAD_SNIPPET_TEXT_SIZE, 12)
+        set(value) = prefs.edit().putInt(THREAD_SNIPPET_TEXT_SIZE, value).apply()
+
+    var threadSnippetTextColor: Int
+        get() = prefs.getInt(THREAD_SNIPPET_TEXT_COLOR, 0xff555555.toInt())
+        set(value) = prefs.edit().putInt(THREAD_SNIPPET_TEXT_COLOR, value).apply()
+
+    // thread view: date / sender info
+    var threadInfoTextSize: Int
+        get() = prefs.getInt(THREAD_INFO_TEXT_SIZE, 10)
+        set(value) = prefs.edit().putInt(THREAD_INFO_TEXT_SIZE, value).apply()
+
+    var threadInfoTextColor: Int
+        get() = prefs.getInt(THREAD_INFO_TEXT_COLOR, 0xff999999.toInt())
+        set(value) = prefs.edit().putInt(THREAD_INFO_TEXT_COLOR, value).apply()
 
     var customNotifications: Set<String>
         get() = prefs.getStringSet(CUSTOM_NOTIFICATIONS, HashSet<String>())!!
@@ -146,9 +188,4 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getString(LAST_BLOCKED_KEYWORD_EXPORT_PATH, "")!!
         set(lastBlockedNumbersExportPath) = prefs.edit()
             .putString(LAST_BLOCKED_KEYWORD_EXPORT_PATH, lastBlockedNumbersExportPath).apply()
-
-    var keepConversationsArchived: Boolean
-        get() = prefs.getBoolean(KEEP_CONVERSATIONS_ARCHIVED, false)
-        set(keepConversationsArchived) = prefs.edit()
-            .putBoolean(KEEP_CONVERSATIONS_ARCHIVED, keepConversationsArchived).apply()
 }
