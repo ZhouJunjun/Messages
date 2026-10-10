@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tab strip injected as the first child of the toolbar's AppBarLayout (see MainActivity.setupTopTabs) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main_top_tabs"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/medium_margin"
+        android:paddingEnd="@dimen/medium_margin">
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/tab_conversations"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?selectableItemBackgroundBorderless"
+            android:paddingStart="@dimen/medium_margin"
+            android:paddingTop="@dimen/small_margin"
+            android:paddingEnd="@dimen/medium_margin"
+            android:paddingBottom="@dimen/small_margin"
+            android:text="@string/tab_conversations"
+            android:textSize="@dimen/bigger_text_size"
+            android:textStyle="bold" />
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/tab_services"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?selectableItemBackgroundBorderless"
+            android:paddingStart="@dimen/medium_margin"
+            android:paddingTop="@dimen/small_margin"
+            android:paddingEnd="@dimen/medium_margin"
+            android:paddingBottom="@dimen/small_margin"
+            android:text="@string/tab_service_messages"
+            android:textSize="@dimen/bigger_text_size"
+            android:textStyle="bold" />
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/tab_starred"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?selectableItemBackgroundBorderless"
+            android:paddingStart="@dimen/medium_margin"
+            android:paddingTop="@dimen/small_margin"
+            android:paddingEnd="@dimen/medium_margin"
+            android:paddingBottom="@dimen/small_margin"
+            android:text="@string/tab_starred_messages"
+            android:textSize="@dimen/bigger_text_size"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

@@ -444,6 +444,7 @@ class ThreadAdapter(
             alignStart(threadMessageMetadata)
             alignStart(threadMessageAttachmentsHolder)
             alignStart(threadMessageBubble)
+            applyBubbleMargins(threadMessageWrapper, startDp = 10, endDp = 20)
 
             // the bubble itself carries the background, so the copyable strings sit inside it
             threadMessageBubble.apply {
@@ -463,6 +464,7 @@ class ThreadAdapter(
             alignEnd(threadMessageMetadata)
             alignEnd(threadMessageAttachmentsHolder)
             alignEnd(threadMessageBubble)
+            applyBubbleMargins(threadMessageWrapper, startDp = 20, endDp = 10)
 
             val primaryColor = activity.getProperPrimaryColor()
             val contrastColor = primaryColor.getContrastColor()
@@ -490,6 +492,18 @@ class ThreadAdapter(
                     setCompoundDrawables(null, null, null, null)
                 }
             }
+        }
+    }
+
+    /**
+     * Received messages keep a 10dp gap on their own (left) side and stretch to 20dp from the
+     * right edge; sent messages mirror that. Requested by the 1.0.2 spec.
+     */
+    private fun applyBubbleMargins(view: View, startDp: Int, endDp: Int) {
+        val density = activity.resources.displayMetrics.density
+        view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            marginStart = (startDp * density).toInt()
+            marginEnd = (endDp * density).toInt()
         }
     }
 

@@ -10,6 +10,7 @@ import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.provider.Telephony
 import android.text.TextUtils
+import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import org.fossify.commons.dialogs.PermissionRequiredDialog
 import org.fossify.commons.extensions.adjustAlpha
@@ -91,6 +92,10 @@ class MainActivity : SimpleActivity() {
 
     private var currentTab = TAB_CONVERSATIONS
     private var allConversationsForTabs = ArrayList<Conversation>()
+
+    private var tabConversationsView: TextView? = null
+    private var tabServicesView: TextView? = null
+    private var tabStarredView: TextView? = null
 
     private val binding by viewBinding(ActivityMainBinding::inflate)
 
@@ -437,10 +442,26 @@ class MainActivity : SimpleActivity() {
         }
     }
 
+    /**
+     * Injects the tab strip as the first child of the toolbar's AppBarLayout, so the tabs end up
+     * *above* the search box (1.0.2 spec) while still being pushed below the status bar by the
+     * app bar's own window-inset handling.
+     */
     private fun setupTopTabs() {
-        binding.tabConversations.setOnClickListener { switchTab(TAB_CONVERSATIONS) }
-        binding.tabServices.setOnClickListener { switchTab(TAB_SERVICES) }
-        binding.tabStarred.setOnClickListener { switchTab(TAB_STARRED) }
+        tabConversationsView?.let {
+            updateTabColors()
+            return
+        }
+
+        val tabs = layoutInflater.inflate(R.layout.main_tabs, binding.mainMenu, false)
+        binding.mainMenu.addView(tabs, 0)
+        tabConversationsView = tabs.findViewById(R.id.tab_conversations)
+        tabServicesView = tabs.findViewById(R.id.tab_services)
+        tabStarredView = tabs.findViewById(R.id.tab_starred)
+
+        tabConversationsView?.setOnClickListener { switchTab(TAB_CONVERSATIONS) }
+        tabServicesView?.setOnClickListener { switchTab(TAB_SERVICES) }
+        tabStarredView?.setOnClickListener { switchTab(TAB_STARRED) }
         updateTabColors()
     }
 
@@ -448,9 +469,9 @@ class MainActivity : SimpleActivity() {
     private fun updateTabColors() {
         val selectedColor = config.copyableTextColor
         val normalColor = getProperTextColor()
-        binding.tabConversations.setTextColor(if (currentTab == TAB_CONVERSATIONS) selectedColor else normalColor)
-        binding.tabServices.setTextColor(if (currentTab == TAB_SERVICES) selectedColor else normalColor)
-        binding.tabStarred.setTextColor(if (currentTab == TAB_STARRED) selectedColor else normalColor)
+        tabConversationsView?.setTextColor(if (currentTab == TAB_CONVERSATIONS) selectedColor else normalColor)
+        tabServicesView?.setTextColor(if (currentTab == TAB_SERVICES) selectedColor else normalColor)
+        tabStarredView?.setTextColor(if (currentTab == TAB_STARRED) selectedColor else normalColor)
     }
 
     private fun switchTab(tab: Int) {

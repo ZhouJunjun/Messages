@@ -299,7 +299,7 @@ class ThreadActivity : SimpleActivity() {
         }
 
         // the conversation page sits slightly darker than the message bubbles, per the design
-        binding.threadHolder.setBackgroundColor(getProperBackgroundColor().darkenColor(5))
+        binding.threadHolder.setBackgroundColor(getColor(R.color.thread_page_background))
 
         val bottomBarColor = getBottomBarColor()
         binding.messageHolder.root.setBackgroundColor(bottomBarColor)

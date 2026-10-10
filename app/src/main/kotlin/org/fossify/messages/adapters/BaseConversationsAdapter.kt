@@ -2,6 +2,7 @@ package org.fossify.messages.adapters
 
 import android.annotation.SuppressLint
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Parcelable
 import android.util.TypedValue
@@ -208,8 +209,8 @@ abstract class BaseConversationsAdapter(
                 conversationAvatarText.apply {
                     beVisible()
                     text = buildAvatarText(avatarName)
-                    backgroundTintList = ColorStateList.valueOf(properPrimaryColor)
-                    setTextColor(properPrimaryColor.getContrastColor())
+                    backgroundTintList = ColorStateList.valueOf(avatarColorFor(avatarName))
+                    setTextColor(Color.WHITE)
                 }
             } else {
                 conversationAvatarText.beGone()
@@ -219,9 +220,14 @@ abstract class BaseConversationsAdapter(
                 }
             }
 
+            val copyables = extractCopyableStrings(conversation.snippet)
+            conversationCopyablesDivider.apply {
+                beVisibleIf(copyables.isNotEmpty())
+                setBackgroundColor(config.homeInfoTextColor)
+            }
             conversationCopyables.setupCopyableStrings(
                 context = activity,
-                items = extractCopyableStrings(conversation.snippet),
+                items = copyables,
                 textColor = config.copyableTextColor,
                 dividerColor = config.homeInfoTextColor,
                 fontSizeSp = config.copyableTextSize.toFloat()
@@ -255,6 +261,15 @@ abstract class BaseConversationsAdapter(
             it.isWhitespace() || it == '-' || it == '+' || it == '(' || it == ')'
         }
         return withoutNumberChars.isNotEmpty() && !withoutNumberChars.all { it.isDigit() }
+    }
+
+    /**
+     * Picks a stable, well-spread background colour for the text avatar, so that different
+     * contacts and services no longer all end up with the exact same colour.
+     */
+    private fun avatarColorFor(name: String): Int {
+        val index = (name.hashCode() % AVATAR_COLORS.size + AVATAR_COLORS.size) % AVATAR_COLORS.size
+        return AVATAR_COLORS[index]
     }
 
     private fun setupBadgeCount(view: TextView, isUnread: Boolean, count: Int) {
@@ -294,5 +309,17 @@ abstract class BaseConversationsAdapter(
 
     companion object {
         private const val MAX_UNREAD_BADGE_COUNT = 99
+
+        /** Material-ish palette used for the text avatars, mirroring the reference screenshots. */
+        private val AVATAR_COLORS = intArrayOf(
+            0xffef5350.toInt(),
+            0xffab47bc.toInt(),
+            0xff5c6bc0.toInt(),
+            0xff29b6f6.toInt(),
+            0xff26a69a.toInt(),
+            0xff66bb6a.toInt(),
+            0xffffa726.toInt(),
+            0xff8d6e63.toInt()
+        )
     }
 }

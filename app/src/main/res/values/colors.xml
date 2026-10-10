@@ -2,4 +2,7 @@
 <resources>
     <!-- neutral avatar background, matching the reference screenshot (#D9D9D9) -->
     <color name="avatar_default_background">#FFD9D9D9</color>
+
+    <!-- conversation page background, per the 1.0.2 reference (#F2F2F2) -->
+    <color name="thread_page_background">#FFF2F2F2</color>
 </resources>
