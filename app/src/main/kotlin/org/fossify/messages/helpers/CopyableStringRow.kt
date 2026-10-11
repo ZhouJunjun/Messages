@@ -1,32 +1,24 @@
 package org.fossify.messages.helpers
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.ColorFilter
-import android.graphics.Paint
-import android.graphics.PixelFormat
-import android.graphics.drawable.Drawable
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.TextPaint
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
-import android.text.style.DynamicDrawableSpan
-import android.text.style.ImageSpan
 import android.util.TypedValue
 import android.view.View
 import android.widget.TextView
-import kotlin.math.roundToInt
 import org.fossify.commons.extensions.copyToClipboard
 
 /**
  * Renders [items] (already-extracted copyable strings) as a row of transparent "buttons":
- * only the text is coloured, and a vertical bar separates the entries.
+ * only the text is coloured, and the entries are separated by spacing alone.
  *
- * The separator used to be a "│" text glyph, which rendered noticeably thicker than the
- * horizontal divider above the row. It is now drawn as a real 0.5dp bar (same colour and same
- * thickness as the horizontal divider), per the 1.0.4 spec. The whole row wraps
- * automatically because it is still a single [TextView].
+ * The separator used to be a "│" glyph, then a real 0.5dp bar. The 1.0.9 spec drops the vertical
+ * separator entirely - the spacing that used to flank it is kept, so the entries stay as far apart
+ * as they were, just without anything drawn between them. The whole row still wraps automatically
+ * because it is a single [TextView].
  *
  * Tapping a string copies it to the clipboard.
  */
@@ -34,7 +26,6 @@ fun TextView.setupCopyableStrings(
     context: Context,
     items: List<String>,
     textColor: Int,
-    dividerColor: Int,
     fontSizeSp: Float,
 ) {
     if (items.isEmpty()) {
@@ -45,15 +36,10 @@ fun TextView.setupCopyableStrings(
     visibility = View.VISIBLE
     setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
 
-    val density = context.resources.displayMetrics.density
-    val barWidth = (0.5f * density).roundToInt().coerceAtLeast(1)
-    val fontMetrics = paint.fontMetrics
-    val barHeight = (fontMetrics.descent - fontMetrics.ascent).roundToInt().coerceAtLeast(barWidth)
-
     val builder = SpannableStringBuilder()
     items.forEachIndexed { index, item ->
         if (index > 0) {
-            appendDividerBar(builder, dividerColor, barWidth, barHeight)
+            builder.append(ITEM_SEPARATOR_TEXT)
         }
 
         val start = builder.length
@@ -77,71 +63,9 @@ fun TextView.setupCopyableStrings(
 }
 
 /**
- * Appends "  ▏  " where the middle glyph is replaced by a 0.5dp wide, full-line-height bar in
- * [color] - the exact same colour and thickness as the horizontal divider above the row.
- *
- * [SIDE_SPACES] spaces are used on each side of the bar, so the horizontal spacing around every
- * copyable-string "button" is double the original single space (1.0.5 spec).
- */
-private fun appendDividerBar(
-    builder: SpannableStringBuilder,
-    color: Int,
-    widthPx: Int,
-    heightPx: Int,
-) {
-    builder.append(SIDE_SPACES_TEXT)
-
-    val start = builder.length
-    builder.append('\u200B')
-    val bar = VerticalBarDrawable(color, widthPx, heightPx)
-    bar.setBounds(0, 0, widthPx, heightPx)
-    builder.setSpan(
-        ImageSpan(bar, DynamicDrawableSpan.ALIGN_CENTER),
-        start,
-        builder.length,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-    )
-
-    builder.append(SIDE_SPACES_TEXT)
-}
-
-/**
- * Spaces kept on each side of the in-row separator bar. The 1.0.5 spec doubles the horizontal
- * spacing of the copyable-string buttons, i.e. two spaces instead of the original one.
+ * Spaces kept on each side of where the in-row separator used to be. The 1.0.5 spec doubled the
+ * horizontal spacing of the copyable-string buttons to two spaces per side; the 1.0.9 spec removes
+ * the separator but keeps that spacing, hence four spaces between two entries.
  */
 private const val SIDE_SPACES_TEXT = "  "
-
-/** Solid vertical bar used as the in-row separator. */
-private class VerticalBarDrawable(
-    private val barColor: Int,
-    private val widthPx: Int,
-    private val heightPx: Int,
-) : Drawable() {
-    private val paint = Paint().apply {
-        isAntiAlias = false
-        color = barColor
-    }
-
-    override fun draw(canvas: Canvas) {
-        val center = bounds.exactCenterX()
-        val half = widthPx / 2f
-        canvas.drawRect(center - half, bounds.top.toFloat(), center + half, bounds.bottom.toFloat(), paint)
-    }
-
-    override fun getIntrinsicWidth() = widthPx
-
-    override fun getIntrinsicHeight() = heightPx
-
-    override fun setAlpha(alpha: Int) {
-        paint.alpha = alpha
-        invalidateSelf()
-    }
-
-    override fun setColorFilter(colorFilter: ColorFilter?) {
-        paint.colorFilter = colorFilter
-        invalidateSelf()
-    }
-
-    @Suppress("DEPRECATION")
-    override fun getOpacity() = PixelFormat.TRANSLUCENT
-}
+private const val ITEM_SEPARATOR_TEXT = SIDE_SPACES_TEXT + SIDE_SPACES_TEXT

@@ -147,7 +147,6 @@ class StarredMessagesAdapter(
                     context = activity,
                     items = copyables,
                     textColor = config.copyableTextColor,
-                    dividerColor = dividerColor,
                     fontSizeSp = config.copyableTextSize.toFloat()
                 )
             }

@@ -141,6 +141,15 @@
     <string name="appearance_thread_info">会话短信信息</string>
     <string name="appearance_link_color">链接颜色</string>
     <string name="appearance_highlight_color">高亮色</string>
+    <string name="appearance_theme">主题</string>
+    <string name="appearance_theme_system">跟随系统</string>
+    <string name="appearance_theme_light">亮主题</string>
+    <string name="appearance_theme_dark">暗主题</string>
+    <string name="appearance_color_light_short">亮</string>
+    <string name="appearance_color_dark_short">暗</string>
+    <string name="appearance_hex_title">输入色号</string>
+    <string name="appearance_hex_hint">#RRGGBB 或 #AARRGGBB</string>
+    <string name="appearance_hex_invalid">色号格式不正确</string>
     <string name="color_black">黑色</string>
     <string name="color_dark_gray">深灰色</string>
     <string name="color_gray">灰色</string>

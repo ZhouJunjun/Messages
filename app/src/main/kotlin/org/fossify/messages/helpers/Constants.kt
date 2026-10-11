@@ -45,19 +45,58 @@ const val CUSTOM_NOTIFICATIONS = "custom_notifications"
 const val IS_LAUNCHED_FROM_SHORTCUT = "is_launched_from_shortcut"
 
 // custom appearance
+//
+// Text sizes are shared by both themes, colours are not: every colour entry has a light and a
+// dark variant (1.0.9 spec). The light keys keep the names they always had, so an install that
+// already carries colours keeps them; the dark ones start from the defaults below.
 const val HOME_TITLE_TEXT_SIZE = "home_title_text_size"
 const val HOME_TITLE_TEXT_COLOR = "home_title_text_color"
+const val HOME_TITLE_TEXT_COLOR_DARK = "home_title_text_color_dark"
 const val HOME_SNIPPET_TEXT_SIZE = "home_snippet_text_size"
 const val HOME_SNIPPET_TEXT_COLOR = "home_snippet_text_color"
+const val HOME_SNIPPET_TEXT_COLOR_DARK = "home_snippet_text_color_dark"
 const val HOME_INFO_TEXT_SIZE = "home_info_text_size"
 const val HOME_INFO_TEXT_COLOR = "home_info_text_color"
+const val HOME_INFO_TEXT_COLOR_DARK = "home_info_text_color_dark"
 const val COPYABLE_TEXT_SIZE = "copyable_text_size"
 const val COPYABLE_TEXT_COLOR = "copyable_text_color"
+const val COPYABLE_TEXT_COLOR_DARK = "copyable_text_color_dark"
 const val THREAD_SNIPPET_TEXT_SIZE = "thread_snippet_text_size"
 const val THREAD_SNIPPET_TEXT_COLOR = "thread_snippet_text_color"
+const val THREAD_SNIPPET_TEXT_COLOR_DARK = "thread_snippet_text_color_dark"
 const val THREAD_INFO_TEXT_SIZE = "thread_info_text_size"
 const val THREAD_INFO_TEXT_COLOR = "thread_info_text_color"
+const val THREAD_INFO_TEXT_COLOR_DARK = "thread_info_text_color_dark"
 const val LINK_TEXT_COLOR = "link_text_color"
+const val LINK_TEXT_COLOR_DARK = "link_text_color_dark"
+const val HIGHLIGHT_COLOR = "highlight_color"
+const val HIGHLIGHT_COLOR_DARK = "highlight_color_dark"
+
+/**
+ * Theme of the app: follow the device, always light or always dark (1.0.9 spec, default light).
+ * Applied through `AppCompatDelegate.setDefaultNightMode`, which is what commons' dynamic theme
+ * keys off - see `App.applyThemeMode`.
+ */
+const val THEME_MODE = "theme_mode"
+const val THEME_MODE_SYSTEM = 0
+const val THEME_MODE_LIGHT = 1
+const val THEME_MODE_DARK = 2
+val DEFAULT_THEME_MODE = THEME_MODE_LIGHT
+
+/**
+ * One-off 1.0.9 flag. The 1.0.9 spec re-defines the default text sizes, and a stored value always
+ * wins over a changed default, so the sizes are re-applied once for installs that already have
+ * them written (see `Config.migrateAppearanceDefaults`).
+ */
+const val APPEARANCE_109_MIGRATED = "appearance_109_migrated"
+
+// default text sizes, as re-defined by the 1.0.9 spec (see `Config` for the getters)
+const val DEFAULT_HOME_TITLE_TEXT_SIZE = 16
+const val DEFAULT_HOME_SNIPPET_TEXT_SIZE = 13
+const val DEFAULT_HOME_INFO_TEXT_SIZE = 12
+const val DEFAULT_COPYABLE_TEXT_SIZE = 12
+const val DEFAULT_THREAD_SNIPPET_TEXT_SIZE = 13
+const val DEFAULT_THREAD_INFO_TEXT_SIZE = 12
 
 /**
  * Accent colour used by the top tab strip's selected tab and by the search-result highlights.
@@ -65,7 +104,27 @@ const val LINK_TEXT_COLOR = "link_text_color"
  * compile-time constant.
  */
 val DEFAULT_HIGHLIGHT_COLOR = 0xff4caf50.toInt()
-const val HIGHLIGHT_COLOR = "highlight_color"
+
+/**
+ * Light-theme defaults. Not `const val` for the same reason as above.
+ */
+val DEFAULT_HOME_TITLE_TEXT_COLOR = 0xff000000.toInt()
+val DEFAULT_HOME_SNIPPET_TEXT_COLOR = 0xff555555.toInt()
+val DEFAULT_HOME_INFO_TEXT_COLOR = 0xff999999.toInt()
+val DEFAULT_COPYABLE_TEXT_COLOR = 0xff4caf50.toInt()
+val DEFAULT_LINK_TEXT_COLOR = 0xff4d99e0.toInt()
+
+/**
+ * Dark-theme defaults: the same palette mirrored onto a dark surface - the greys are inverted, the
+ * accent colours (copyable green, link blue, highlight green) are kept, since they already carry
+ * enough contrast on either background (1.0.9 spec: "mirror the existing light set").
+ */
+val DEFAULT_HOME_TITLE_TEXT_COLOR_DARK = 0xffffffff.toInt()
+val DEFAULT_HOME_SNIPPET_TEXT_COLOR_DARK = 0xffcccccc.toInt()
+val DEFAULT_HOME_INFO_TEXT_COLOR_DARK = 0xff888888.toInt()
+val DEFAULT_COPYABLE_TEXT_COLOR_DARK = 0xff4caf50.toInt()
+val DEFAULT_LINK_TEXT_COLOR_DARK = 0xff4d99e0.toInt()
+val DEFAULT_HIGHLIGHT_COLOR_DARK = 0xff4caf50.toInt()
 
 private const val PATH = "org.fossify.org.fossify.messages.action."
 const val MARK_AS_READ = PATH + "mark_as_read"

@@ -215,6 +215,9 @@ class ThreadActivity : SimpleActivity() {
     private var isJumpingToMessage = false
     private var isLaunchedFromShortcut = false
 
+    /** Message a starred row / search result pointed at; its bubble is highlighted (1.0.9 spec). */
+    private var highlightedMessageId = -1L
+
     private var isScheduledMessage: Boolean = false
     private var isGroupMessageConfirmationVisible = false
     private var messageToResend: Long? = null
@@ -257,6 +260,12 @@ class ThreadActivity : SimpleActivity() {
             binding.threadToolbar.title = it
         }
         isLaunchedFromShortcut = intent.getBooleanExtra(IS_LAUNCHED_FROM_SHORTCUT, false)
+
+        // A starred row or a search result points at one specific message. Remember it here, before
+        // the list is built, so the very first bind of that row already paints the highlight; the
+        // scroll itself happens once the thread has loaded (1.0.9 spec).
+        highlightedMessageId = intent.getLongExtra(SEARCHED_MESSAGE_ID, -1L)
+        intent.removeExtra(SEARCHED_MESSAGE_ID)
 
         bus = EventBus.getDefault()
         bus!!.register(this)
@@ -573,6 +582,8 @@ class ThreadActivity : SimpleActivity() {
             // A one-to-one thread's messages are all from the same number as the toolbar title, so
             // the metadata lines can drop it (1.0.5 spec).
             hideSenderNumber = participants.size <= 1
+            // the row a jump is heading for is highlighted from its first bind (1.0.9 spec)
+            highlightedMessageId = this@ThreadActivity.highlightedMessageId
         }
     }
 
@@ -812,10 +823,8 @@ class ThreadActivity : SimpleActivity() {
                 setupConversation()
                 setupCachedMessages {
                     setupThread {
-                        val searchedMessageId = intent.getLongExtra(SEARCHED_MESSAGE_ID, -1L)
-                        intent.removeExtra(SEARCHED_MESSAGE_ID)
-                        if (searchedMessageId != -1L) {
-                            jumpToMessage(searchedMessageId)
+                        if (highlightedMessageId != -1L) {
+                            jumpToMessage(highlightedMessageId)
                         }
                     }
                     setupScrollListener()

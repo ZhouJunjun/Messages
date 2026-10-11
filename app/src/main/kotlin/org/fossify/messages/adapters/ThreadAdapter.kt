@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.method.LinkMovementMethod
@@ -104,6 +105,13 @@ class ThreadAdapter(
     private var fontSize = activity.getTextSize()
     var starredIds: Set<Long> = emptySet()
 
+    /**
+     * Message the thread was opened at - the one a starred row or a search result points at. Its
+     * bubble gets an extra highlight layer, so the jump target is obvious once the list has
+     * scrolled to it (1.0.9 spec). -1 means "no highlighted message".
+     */
+    var highlightedMessageId: Long = -1L
+
     /** subscriptionId -> displayed SIM slot number ("1", "2", ...), filled by the activity. */
     var simIdMap: Map<Int, String> = emptyMap()
 
@@ -129,6 +137,9 @@ class ThreadAdapter(
 
         /** Gap between the SIM label, the sender number and the timestamp in the metadata line. */
         private const val METADATA_PART_GAP_DP = 10
+
+        /** Opacity of the highlight layer laid over the bubble a jump landed on (1.0.9 spec). */
+        private const val HIGHLIGHT_ALPHA = 0.3f
     }
 
     init {
@@ -434,7 +445,6 @@ class ThreadAdapter(
                 context = activity,
                 items = copyables,
                 textColor = config.copyableTextColor,
-                dividerColor = dividerColor,
                 fontSizeSp = config.copyableTextSize.toFloat()
             )
 
@@ -536,8 +546,11 @@ class ThreadAdapter(
 
             // the bubble itself carries the background, so the copyable strings sit inside it
             threadMessageBubble.apply {
-                background = AppCompatResources.getDrawable(activity, R.drawable.item_received_background)
-                background?.applyColorFilter(activity.getProperBackgroundColor())
+                background = bubbleBackground(
+                    shapeRes = R.drawable.item_received_background,
+                    color = activity.getProperBackgroundColor(),
+                    highlighted = message.id == highlightedMessageId,
+                )
             }
 
             threadMessageBody.apply {
@@ -556,8 +569,11 @@ class ThreadAdapter(
             val contrastColor = primaryColor.getContrastColor()
 
             threadMessageBubble.apply {
-                background = AppCompatResources.getDrawable(activity, R.drawable.item_sent_background)
-                background?.applyColorFilter(primaryColor)
+                background = bubbleBackground(
+                    shapeRes = R.drawable.item_sent_background,
+                    color = primaryColor,
+                    highlighted = message.id == highlightedMessageId,
+                )
             }
 
             threadMessageBody.apply {
@@ -599,6 +615,26 @@ class ThreadAdapter(
         view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             topMargin = topPx
         }
+    }
+
+    /**
+     * Background of a message bubble: [shapeRes] tinted with [color].
+     *
+     * When [highlighted] the very same shape is stacked on top once more, tinted with the accent
+     * colour at [HIGHLIGHT_ALPHA] - reusing the shape (rather than a plain colour rectangle) is what
+     * keeps the highlight inside the bubble's rounded corners and its tail (1.0.9 spec).
+     */
+    private fun bubbleBackground(shapeRes: Int, color: Int, highlighted: Boolean): Drawable? {
+        val base = AppCompatResources.getDrawable(activity, shapeRes)?.mutate() ?: return null
+        base.applyColorFilter(color)
+
+        if (!highlighted) {
+            return base
+        }
+
+        val overlay = AppCompatResources.getDrawable(activity, shapeRes)?.mutate() ?: return base
+        overlay.applyColorFilter(activity.config.highlightColor.adjustAlpha(HIGHLIGHT_ALPHA))
+        return LayerDrawable(arrayOf(base, overlay))
     }
 
     private fun setupImageView(holder: ViewHolder, binding: ItemMessageBinding, message: Message, attachment: Attachment) = binding.apply {

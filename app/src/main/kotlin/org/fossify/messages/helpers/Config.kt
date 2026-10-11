@@ -1,6 +1,7 @@
 package org.fossify.messages.helpers
 
 import android.content.Context
+import android.content.res.Configuration
 import org.fossify.commons.helpers.BaseConfig
 import org.fossify.messages.extensions.getDefaultKeyboardHeight
 import org.fossify.messages.models.Conversation
@@ -115,73 +116,207 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(SOFT_KEYBOARD_HEIGHT, context.getDefaultKeyboardHeight())
         set(keyboardHeight) = prefs.edit().putInt(SOFT_KEYBOARD_HEIGHT, keyboardHeight).apply()
 
+    // --- theme mode (1.0.9 spec) ---------------------------------------------------
+
+    /**
+     * Follow the device, always light or always dark. Defaults to light, as the 1.0.9 spec asks -
+     * until 1.0.9 the look was whatever commons' dynamic theme produced, i.e. it followed the
+     * device, which on a dark device gave a dark app without the user ever choosing it.
+     */
+    var themeMode: Int
+        get() = prefs.getInt(THEME_MODE, DEFAULT_THEME_MODE)
+        set(value) = prefs.edit().putInt(THEME_MODE, value).apply()
+
+    /**
+     * True when the dark half of every colour pair is the one on screen. [THEME_MODE_SYSTEM] defers
+     * to the device; the forced modes are what actually make the two-colour-set feature usable,
+     * since they are the only modes where the user's choice does not depend on the device setting.
+     *
+     * The device state is read off the resources configuration rather than
+     * [android.content.res.Configuration] of the system, because `AppCompatDelegate`'s forced night
+     * mode rewrites exactly this value - that is how a forced theme reaches the app.
+     */
+    val isDarkAppearance: Boolean
+        get() = when (themeMode) {
+            THEME_MODE_LIGHT -> false
+            THEME_MODE_DARK -> true
+            else -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        }
+
+    /**
+     * Re-applies the 1.0.9 default text sizes once. A changed default is invisible to an install
+     * that already stored the old one, and the spec re-defined them, so the stored sizes are
+     * cleared once (colours are left alone - they got their own light/dark keys anyway).
+     */
+    fun migrateAppearanceDefaults() {
+        if (prefs.getBoolean(APPEARANCE_109_MIGRATED, false)) {
+            return
+        }
+
+        prefs.edit()
+            .putInt(HOME_TITLE_TEXT_SIZE, DEFAULT_HOME_TITLE_TEXT_SIZE)
+            .putInt(HOME_SNIPPET_TEXT_SIZE, DEFAULT_HOME_SNIPPET_TEXT_SIZE)
+            .putInt(HOME_INFO_TEXT_SIZE, DEFAULT_HOME_INFO_TEXT_SIZE)
+            .putInt(COPYABLE_TEXT_SIZE, DEFAULT_COPYABLE_TEXT_SIZE)
+            .putInt(THREAD_SNIPPET_TEXT_SIZE, DEFAULT_THREAD_SNIPPET_TEXT_SIZE)
+            .putInt(THREAD_INFO_TEXT_SIZE, DEFAULT_THREAD_INFO_TEXT_SIZE)
+            .putBoolean(APPEARANCE_109_MIGRATED, true)
+            .apply()
+    }
+
     // --- custom appearance: sizes are stored in sp, colors as ARGB ints -------------
+    //
+    // Sizes are shared by the light and the dark theme. Every colour exists twice: the plain
+    // property reads/writes whichever half is currently in use, and the `…Light` / `…Dark` pair
+    // behind it lets the appearance screen edit both halves regardless of the active theme
+    // (1.0.9 spec).
 
     // home list: conversation title
     var homeTitleTextSize: Int
-        get() = prefs.getInt(HOME_TITLE_TEXT_SIZE, 14)
+        get() = prefs.getInt(HOME_TITLE_TEXT_SIZE, DEFAULT_HOME_TITLE_TEXT_SIZE)
         set(value) = prefs.edit().putInt(HOME_TITLE_TEXT_SIZE, value).apply()
 
     var homeTitleTextColor: Int
-        get() = prefs.getInt(HOME_TITLE_TEXT_COLOR, 0xff000000.toInt())
+        get() = if (isDarkAppearance) homeTitleTextColorDark else homeTitleTextColorLight
+        set(value) {
+            if (isDarkAppearance) homeTitleTextColorDark = value else homeTitleTextColorLight = value
+        }
+
+    var homeTitleTextColorLight: Int
+        get() = prefs.getInt(HOME_TITLE_TEXT_COLOR, DEFAULT_HOME_TITLE_TEXT_COLOR)
         set(value) = prefs.edit().putInt(HOME_TITLE_TEXT_COLOR, value).apply()
+
+    var homeTitleTextColorDark: Int
+        get() = prefs.getInt(HOME_TITLE_TEXT_COLOR_DARK, DEFAULT_HOME_TITLE_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(HOME_TITLE_TEXT_COLOR_DARK, value).apply()
 
     // home list: message snippet
     var homeSnippetTextSize: Int
-        get() = prefs.getInt(HOME_SNIPPET_TEXT_SIZE, 12)
+        get() = prefs.getInt(HOME_SNIPPET_TEXT_SIZE, DEFAULT_HOME_SNIPPET_TEXT_SIZE)
         set(value) = prefs.edit().putInt(HOME_SNIPPET_TEXT_SIZE, value).apply()
 
     var homeSnippetTextColor: Int
-        get() = prefs.getInt(HOME_SNIPPET_TEXT_COLOR, 0xff555555.toInt())
+        get() = if (isDarkAppearance) homeSnippetTextColorDark else homeSnippetTextColorLight
+        set(value) {
+            if (isDarkAppearance) homeSnippetTextColorDark = value else homeSnippetTextColorLight = value
+        }
+
+    var homeSnippetTextColorLight: Int
+        get() = prefs.getInt(HOME_SNIPPET_TEXT_COLOR, DEFAULT_HOME_SNIPPET_TEXT_COLOR)
         set(value) = prefs.edit().putInt(HOME_SNIPPET_TEXT_COLOR, value).apply()
+
+    var homeSnippetTextColorDark: Int
+        get() = prefs.getInt(HOME_SNIPPET_TEXT_COLOR_DARK, DEFAULT_HOME_SNIPPET_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(HOME_SNIPPET_TEXT_COLOR_DARK, value).apply()
 
     // home list: date / extra info
     var homeInfoTextSize: Int
-        get() = prefs.getInt(HOME_INFO_TEXT_SIZE, 10)
+        get() = prefs.getInt(HOME_INFO_TEXT_SIZE, DEFAULT_HOME_INFO_TEXT_SIZE)
         set(value) = prefs.edit().putInt(HOME_INFO_TEXT_SIZE, value).apply()
 
     var homeInfoTextColor: Int
-        get() = prefs.getInt(HOME_INFO_TEXT_COLOR, 0xff999999.toInt())
+        get() = if (isDarkAppearance) homeInfoTextColorDark else homeInfoTextColorLight
+        set(value) {
+            if (isDarkAppearance) homeInfoTextColorDark = value else homeInfoTextColorLight = value
+        }
+
+    var homeInfoTextColorLight: Int
+        get() = prefs.getInt(HOME_INFO_TEXT_COLOR, DEFAULT_HOME_INFO_TEXT_COLOR)
         set(value) = prefs.edit().putInt(HOME_INFO_TEXT_COLOR, value).apply()
+
+    var homeInfoTextColorDark: Int
+        get() = prefs.getInt(HOME_INFO_TEXT_COLOR_DARK, DEFAULT_HOME_INFO_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(HOME_INFO_TEXT_COLOR_DARK, value).apply()
 
     // copyable strings / verification codes
     var copyableTextSize: Int
-        get() = prefs.getInt(COPYABLE_TEXT_SIZE, 12)
+        get() = prefs.getInt(COPYABLE_TEXT_SIZE, DEFAULT_COPYABLE_TEXT_SIZE)
         set(value) = prefs.edit().putInt(COPYABLE_TEXT_SIZE, value).apply()
 
     var copyableTextColor: Int
-        get() = prefs.getInt(COPYABLE_TEXT_COLOR, 0xff4caf50.toInt())
+        get() = if (isDarkAppearance) copyableTextColorDark else copyableTextColorLight
+        set(value) {
+            if (isDarkAppearance) copyableTextColorDark = value else copyableTextColorLight = value
+        }
+
+    var copyableTextColorLight: Int
+        get() = prefs.getInt(COPYABLE_TEXT_COLOR, DEFAULT_COPYABLE_TEXT_COLOR)
         set(value) = prefs.edit().putInt(COPYABLE_TEXT_COLOR, value).apply()
+
+    var copyableTextColorDark: Int
+        get() = prefs.getInt(COPYABLE_TEXT_COLOR_DARK, DEFAULT_COPYABLE_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(COPYABLE_TEXT_COLOR_DARK, value).apply()
 
     // thread view: message body
     var threadSnippetTextSize: Int
-        get() = prefs.getInt(THREAD_SNIPPET_TEXT_SIZE, 12)
+        get() = prefs.getInt(THREAD_SNIPPET_TEXT_SIZE, DEFAULT_THREAD_SNIPPET_TEXT_SIZE)
         set(value) = prefs.edit().putInt(THREAD_SNIPPET_TEXT_SIZE, value).apply()
 
     var threadSnippetTextColor: Int
-        get() = prefs.getInt(THREAD_SNIPPET_TEXT_COLOR, 0xff555555.toInt())
+        get() = if (isDarkAppearance) threadSnippetTextColorDark else threadSnippetTextColorLight
+        set(value) {
+            if (isDarkAppearance) threadSnippetTextColorDark = value else threadSnippetTextColorLight = value
+        }
+
+    var threadSnippetTextColorLight: Int
+        get() = prefs.getInt(THREAD_SNIPPET_TEXT_COLOR, DEFAULT_HOME_SNIPPET_TEXT_COLOR)
         set(value) = prefs.edit().putInt(THREAD_SNIPPET_TEXT_COLOR, value).apply()
+
+    var threadSnippetTextColorDark: Int
+        get() = prefs.getInt(THREAD_SNIPPET_TEXT_COLOR_DARK, DEFAULT_HOME_SNIPPET_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(THREAD_SNIPPET_TEXT_COLOR_DARK, value).apply()
 
     // thread view: date / sender info
     var threadInfoTextSize: Int
-        get() = prefs.getInt(THREAD_INFO_TEXT_SIZE, 10)
+        get() = prefs.getInt(THREAD_INFO_TEXT_SIZE, DEFAULT_THREAD_INFO_TEXT_SIZE)
         set(value) = prefs.edit().putInt(THREAD_INFO_TEXT_SIZE, value).apply()
 
     var threadInfoTextColor: Int
-        get() = prefs.getInt(THREAD_INFO_TEXT_COLOR, 0xff999999.toInt())
+        get() = if (isDarkAppearance) threadInfoTextColorDark else threadInfoTextColorLight
+        set(value) {
+            if (isDarkAppearance) threadInfoTextColorDark = value else threadInfoTextColorLight = value
+        }
+
+    var threadInfoTextColorLight: Int
+        get() = prefs.getInt(THREAD_INFO_TEXT_COLOR, DEFAULT_HOME_INFO_TEXT_COLOR)
         set(value) = prefs.edit().putInt(THREAD_INFO_TEXT_COLOR, value).apply()
+
+    var threadInfoTextColorDark: Int
+        get() = prefs.getInt(THREAD_INFO_TEXT_COLOR_DARK, DEFAULT_HOME_INFO_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(THREAD_INFO_TEXT_COLOR_DARK, value).apply()
 
     // links inside message bodies (default matches the Android link blue)
     var linkTextColor: Int
-        get() = prefs.getInt(LINK_TEXT_COLOR, 0xff4d99e0.toInt())
+        get() = if (isDarkAppearance) linkTextColorDark else linkTextColorLight
+        set(value) {
+            if (isDarkAppearance) linkTextColorDark = value else linkTextColorLight = value
+        }
+
+    var linkTextColorLight: Int
+        get() = prefs.getInt(LINK_TEXT_COLOR, DEFAULT_LINK_TEXT_COLOR)
         set(value) = prefs.edit().putInt(LINK_TEXT_COLOR, value).apply()
 
-    // accent colour: the selected top tab and the search-result hit highlighting (1.0.7 spec).
-    // Its default is deliberately the copyable-string colour, so turning the accent on does not
-    // change the existing look.
+    var linkTextColorDark: Int
+        get() = prefs.getInt(LINK_TEXT_COLOR_DARK, DEFAULT_LINK_TEXT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(LINK_TEXT_COLOR_DARK, value).apply()
+
+    // accent colour: the selected top tab, the search-result hit highlighting and the "delivered"
+    // check mark (1.0.7 spec). Its light default is deliberately the copyable-string colour, so
+    // turning the accent on does not change the existing look.
     var highlightColor: Int
+        get() = if (isDarkAppearance) highlightColorDark else highlightColorLight
+        set(value) {
+            if (isDarkAppearance) highlightColorDark = value else highlightColorLight = value
+        }
+
+    var highlightColorLight: Int
         get() = prefs.getInt(HIGHLIGHT_COLOR, DEFAULT_HIGHLIGHT_COLOR)
         set(value) = prefs.edit().putInt(HIGHLIGHT_COLOR, value).apply()
+
+    var highlightColorDark: Int
+        get() = prefs.getInt(HIGHLIGHT_COLOR_DARK, DEFAULT_HIGHLIGHT_COLOR_DARK)
+        set(value) = prefs.edit().putInt(HIGHLIGHT_COLOR_DARK, value).apply()
 
     var customNotifications: Set<String>
         get() = prefs.getStringSet(CUSTOM_NOTIFICATIONS, HashSet<String>())!!

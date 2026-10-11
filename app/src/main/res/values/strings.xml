@@ -165,6 +165,15 @@
     <string name="appearance_thread_info">Thread message info</string>
     <string name="appearance_link_color">Link color</string>
     <string name="appearance_highlight_color">Highlight color</string>
+    <string name="appearance_theme">Theme</string>
+    <string name="appearance_theme_system">Follow system</string>
+    <string name="appearance_theme_light">Light</string>
+    <string name="appearance_theme_dark">Dark</string>
+    <string name="appearance_color_light_short">Light</string>
+    <string name="appearance_color_dark_short">Dark</string>
+    <string name="appearance_hex_title">Enter a color code</string>
+    <string name="appearance_hex_hint">#RRGGBB or #AARRGGBB</string>
+    <string name="appearance_hex_invalid">Not a valid color code</string>
     <string name="color_black">Black</string>
     <string name="color_dark_gray">Dark gray</string>
     <string name="color_gray">Gray</string>

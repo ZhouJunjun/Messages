@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark-theme counterparts of the colours that used to be hard-coded in `values/colors.xml`.
+
+  The app paints almost everything at runtime from commons' "proper" colours, which follow the
+  theme AppCompat is told to use (see `App.applyThemeMode`), so only the few literal colours need a
+  second value. Selected automatically while the night configuration is active, which is exactly
+  when the appearance screen has switched to the dark theme.
+-->
+<resources>
+    <!-- conversation page body; the light value is #F2F2F2. The search box uses it too. -->
+    <color name="thread_page_background">#FF121212</color>
+
+    <!-- neutral placeholder avatar, matching the dark surface rather than the light #D9D9D9 -->
+    <color name="avatar_default_background">#FF3C4043</color>
+
+    <!--
+      The tab row's overflow popup is deliberately white in both themes (1.0.8 spec), so its text
+      has to stay dark. Pinned here as well, otherwise night mode has nothing to select and the
+      value would fall back to whatever `values/colors.xml` holds.
+    -->
+    <color name="popup_menu_text_color">#DE000000</color>
+
+    <!-- the launcher icon is not theme-dependent; pinned so night mode cannot tint it -->
+    <color name="launcher_background">#FF8EA6B8</color>
+</resources>

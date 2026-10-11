@@ -27,7 +27,7 @@
             android:paddingEnd="@dimen/medium_margin"
             android:paddingBottom="@dimen/small_margin"
             android:text="@string/tab_conversations"
-            android:textSize="@dimen/big_text_size"
+            android:textSize="@dimen/main_tab_text_size"
             android:textStyle="bold" />
 
         <org.fossify.commons.views.MyTextView
@@ -39,7 +39,7 @@
             android:paddingEnd="@dimen/medium_margin"
             android:paddingBottom="@dimen/small_margin"
             android:text="@string/tab_service_messages"
-            android:textSize="@dimen/big_text_size"
+            android:textSize="@dimen/main_tab_text_size"
             android:textStyle="bold" />
 
         <org.fossify.commons.views.MyTextView
@@ -51,7 +51,7 @@
             android:paddingEnd="@dimen/medium_margin"
             android:paddingBottom="@dimen/small_margin"
             android:text="@string/tab_starred_messages"
-            android:textSize="@dimen/big_text_size"
+            android:textSize="@dimen/main_tab_text_size"
             android:textStyle="bold" />
 
         <!-- spacer that pushes the overflow button to the end of the row -->

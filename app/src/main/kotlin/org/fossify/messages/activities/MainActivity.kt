@@ -125,15 +125,16 @@ class MainActivity : SimpleActivity() {
     private var allConversationsForTabs = ArrayList<Conversation>()
 
     /**
-     * Search state. Matching conversations are shown in the *same* list as the tabs (1.0.7 spec)
-     * so a result row looks exactly like a normal row and the tab strip keeps filtering it.
-     * [searchThreadIds]/[searchBodies] come from the telephony provider and let a thread match on
-     * a message other than its newest one, in which case that message becomes the shown snippet.
+     * Search state.
+     *
+     * As of 1.0.9 a search result is one *message*, not one conversation: every hit from the
+     * telephony provider becomes its own row, drawn with the very same row layout the conversation
+     * lists use, and the tab strip keeps splitting the hits (conversations / notifications /
+     * starred). Until 1.0.8 a hit was a whole conversation with the matching message promoted to
+     * its snippet, which is why a thread with three matching messages only ever showed up once.
      */
     private var searchActive = false
-    private var searchThreadIds: Set<Long> = emptySet()
-    private var searchBodies: Map<Long, String> = emptyMap()
-    private var searchMessageIds: Map<Long, Long> = emptyMap()
+    private var searchMessageResults: List<Message> = emptyList()
 
     /** Debounce plumbing for the search box (1.0.8 spec: 1s). */
     private val searchHandler = Handler(Looper.getMainLooper())
@@ -413,13 +414,15 @@ class MainActivity : SimpleActivity() {
      * avatars with black text after coming back from a conversation (1.0.3 spec). The coloured
      * avatar background always needs white text, so re-assert it right away - the full re-bind
      * above only happens on the next layout pass.
+     *
+     * Both avatar ids are covered because a page can be showing either kind of row: the
+     * conversation layout uses one id, the message row (starred tab, search results) the other.
      */
     private fun restoreAvatarTextColors() {
-        pageLists.forEachIndexed { tab, list ->
+        pageLists.forEach { list ->
             if (list != null) {
-                val avatarId =
-                    if (tab == TAB_STARRED) R.id.starred_avatar_text else R.id.conversation_avatar_text
-                restoreAvatarTextColorsFor(list, avatarId)
+                restoreAvatarTextColorsFor(list, R.id.conversation_avatar_text)
+                restoreAvatarTextColorsFor(list, R.id.starred_avatar_text)
             }
         }
     }
@@ -635,39 +638,58 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Attaches a private adapter to one pager page and hands it the data for that tab. Called
-     * whenever the pager binds a page, which also covers the pages it recreates after a data set
-     * change.
+     * Attaches an adapter to one pager page and hands it the data for that tab. Called whenever the
+     * pager binds a page, which also covers the pages it recreates after a data set change.
      */
     private fun bindPage(tab: Int, scroller: RecyclerViewFastScroller, list: MyRecyclerView) {
-        val isNewPage = pageLists[tab] !== list
         pageLists[tab] = list
         pageScrollers[tab] = scroller
 
-        if (isNewPage || list.adapter == null) {
-            hideKeyboard()
-            list.adapter = when (tab) {
-                TAB_STARRED -> StarredMessagesAdapter(
-                    activity = this,
-                    recyclerView = list,
-                    itemClick = { handleStarredMessageClick(it) }
-                )
-
-                else -> ConversationsAdapter(
-                    activity = this,
-                    recyclerView = list,
-                    onRefresh = { notifyDatasetChanged() },
-                    itemClick = { handleConversationClick(it) }
-                )
-            }
-
-            if (areSystemAnimationsEnabled) {
-                list.scheduleLayoutAnimation()
-            }
-        }
-
+        ensurePageAdapter(tab, list)
         scroller.updateColors(getProperPrimaryColor())
         refreshPage(tab)
+    }
+
+    /**
+     * Makes sure a page holds the adapter its current content needs.
+     *
+     * The two conversation tabs render conversations normally, but message rows while a search is
+     * running - a search result is a single message (1.0.9 spec) - so entering or leaving a search
+     * replaces the page's adapter. Both kinds of message row reuse [StarredMessagesAdapter], which
+     * renders exactly the conversation row layout off a [Message].
+     */
+    private fun ensurePageAdapter(tab: Int, list: MyRecyclerView) {
+        val wantsMessageRows = tab == TAB_STARRED || searchActive
+        val hasMessageRows = list.adapter is StarredMessagesAdapter
+        if (list.adapter != null && wantsMessageRows == hasMessageRows) {
+            return
+        }
+
+        hideKeyboard()
+        list.adapter = when {
+            tab == TAB_STARRED -> StarredMessagesAdapter(
+                activity = this,
+                recyclerView = list,
+                itemClick = { handleStarredMessageClick(it) }
+            )
+
+            wantsMessageRows -> StarredMessagesAdapter(
+                activity = this,
+                recyclerView = list,
+                itemClick = { handleSearchMessageClick(it) }
+            )
+
+            else -> ConversationsAdapter(
+                activity = this,
+                recyclerView = list,
+                onRefresh = { notifyDatasetChanged() },
+                itemClick = { handleConversationClick(it) }
+            )
+        }
+
+        if (areSystemAnimationsEnabled) {
+            list.scheduleLayoutAnimation()
+        }
     }
 
     private fun setupConversations(
@@ -680,13 +702,12 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Renders the list for the current tab, using the search matches as the source while a search
-     * is active. Every path that used to call `setupConversations` now ends up here, so switching
-     * tabs (by tap or by swipe) keeps the active search applied - a result list for the
-     * "notifications" tab is never silently replaced by the full one (1.0.7 spec).
+     * Re-renders all three tabs. Every path that used to call `setupConversations` ends up here, so
+     * switching tabs (by tap or by swipe) keeps whatever is currently on screen - an active search
+     * included - instead of silently falling back to the full list (1.0.7 spec).
      *
-     * The build itself is skipped whenever the cache already holds this tab + query, which is what
-     * makes swiping between tabs cheap (1.0.8 spec).
+     * The conversation build itself is skipped whenever the cache already holds this tab, which is
+     * what makes swiping between tabs cheap (1.0.8 spec).
      */
     private fun refreshConversationList(cached: Boolean = false) {
         for (tab in 0 until TAB_COUNT) {
@@ -700,24 +721,45 @@ class MainActivity : SimpleActivity() {
      * Every tab is refreshed - not just the visible one - so the page a drag is about to reveal
      * already holds its rows. The loading / empty hints are only touched for the visible tab, so a
      * background refresh can never flash a placeholder over the page being looked at (1.0.8 rework).
+     *
+     * While a search is running the two conversation tabs carry message rows instead of conversation
+     * rows, so the page's adapter is swapped first (1.0.9 spec).
      */
     private fun refreshPage(tab: Int, cached: Boolean = false) {
+        val list = pageLists[tab]
+        if (list != null) {
+            ensurePageAdapter(tab, list)
+        }
+
         if (tab == TAB_STARRED) {
             // the starred tab has its own adapter, but it answers the same query (1.0.7 spec)
             loadStarredMessages()
             return
         }
 
-        val cacheKey = "$tab|${if (searchActive) lastSearchedText else ""}"
-        val listed = conversationCache.getOrPut(cacheKey) { buildConversationList(tab) }
+        if (searchActive) {
+            val results = searchMessagesForTab(tab)
+            (list?.adapter as? StarredMessagesAdapter)?.apply {
+                highlightText = lastSearchedText
+            }?.submitList(results)
+
+            if (tab == currentTab) {
+                showOrHideProgress(false)
+                showOrHidePlaceholder(results.isEmpty())
+                updateSearchHolder(results.isEmpty())
+            }
+            return
+        }
+
+        val listed = conversationCache.getOrPut("$tab") { buildConversationList(tab) }
 
         // the page may not exist yet (ViewPager2 creates pages lazily): the list is still built and
         // cached here so the visible tab's loading / empty state is right immediately, and bindPage
         // picks the cached data up the moment the page appears
-        pageLists[tab]?.let { list ->
+        list?.let {
             try {
-                (list.adapter as? ConversationsAdapter)?.apply {
-                    highlightText = if (searchActive) lastSearchedText else ""
+                (it.adapter as? ConversationsAdapter)?.apply {
+                    highlightText = ""
                     updateConversations(listed.conversations)
                 }
             } catch (_: Exception) {
@@ -738,13 +780,32 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Filters, sorts and caches the list for one tab / the active query. Split out of
-     * [refreshConversationList] so a swipe between two tabs can reuse what it already built, and
-     * parameterised by tab so [refreshPage] can build any of the three.
+     * The search hits that belong to [tab].
+     *
+     * A hit is filed under the tab its conversation already lives in, so the tab strip keeps
+     * meaning the same thing inside and outside a search. Hits of a thread the conversation list
+     * does not know about yet fall back to classifying the message itself.
+     */
+    private fun searchMessagesForTab(tab: Int): List<Message> {
+        val conversationByThread = allConversationsForTabs.associateBy { it.threadId }
+        return searchMessageResults.filter { message ->
+            val conversation = conversationByThread[message.threadId]
+            val isService = if (conversation != null) {
+                isServiceConversation(conversation.phoneNumber, conversation.snippet)
+            } else {
+                isServiceConversation(message.senderPhoneNumber, message.body)
+            }
+            if (tab == TAB_SERVICES) isService else !isService
+        }
+    }
+
+    /**
+     * Filters, sorts and caches the list for one tab. Split out of [refreshConversationList] so a
+     * swipe between two tabs can reuse what it already built, and parameterised by tab so
+     * [refreshPage] can build any of the three.
      */
     private fun buildConversationList(tab: Int): CachedConversationList {
-        val source = if (searchActive) computeSearchMatches() else allConversationsForTabs
-        val filtered = filterConversationsForTab(source, tab)
+        val filtered = filterConversationsForTab(allConversationsForTabs, tab)
         // the pinned set is read once: doing the lookup *inside* the comparator meant a
         // SharedPreferences read per comparison, which is what made tab switches stall
         val pinned = config.pinnedConversations
@@ -757,42 +818,13 @@ class MainActivity : SimpleActivity() {
         return CachedConversationList(
             conversations = sorted,
             empty = filtered.isEmpty(),
-            sourceEmpty = source.isEmpty(),
+            sourceEmpty = allConversationsForTabs.isEmpty(),
         )
     }
 
     /** Drops every cached tab list; the next refresh rebuilds from scratch. */
     private fun invalidateConversationCache() {
         conversationCache.clear()
-    }
-
-    /**
-     * Conversations matching the active search: title / number / shown snippet, plus any thread
-     * that has at least one message containing the term. For the latter the matching message
-     * body is promoted to the shown snippet, otherwise the hit would be invisible.
-     */
-    private fun computeSearchMatches(): ArrayList<Conversation> {
-        val text = lastSearchedText
-        val matches = ArrayList<Conversation>()
-        if (text.isEmpty()) {
-            return matches
-        }
-
-        allConversationsForTabs.forEach { conversation ->
-            val titleHit = conversation.title.contains(text, ignoreCase = true) ||
-                conversation.phoneNumber.contains(text, ignoreCase = true)
-            val snippetHit = conversation.snippet.contains(text, ignoreCase = true)
-            val bodyHit = searchThreadIds.contains(conversation.threadId)
-            if (titleHit || snippetHit || bodyHit) {
-                val snippet = if (!snippetHit && bodyHit) {
-                    searchBodies[conversation.threadId] ?: conversation.snippet
-                } else {
-                    conversation.snippet
-                }
-                matches.add(if (snippet != conversation.snippet) conversation.copy(snippet = snippet) else conversation)
-            }
-        }
-        return matches
     }
 
     private fun filterConversationsForTab(
@@ -929,11 +961,31 @@ class MainActivity : SimpleActivity() {
         }
     }
 
+    /**
+     * A starred row opens its conversation. The message it stands for travels along as
+     * [SEARCHED_MESSAGE_ID], so the thread scrolls to that very message and highlights its bubble
+     * instead of just opening at the bottom (1.0.9 spec).
+     */
     private fun handleStarredMessageClick(any: Any) {
         val message = any as? Message ?: return
         Intent(this, ThreadActivity::class.java).apply {
             putExtra(THREAD_ID, message.threadId)
             putExtra(THREAD_TITLE, message.senderName)
+            putExtra(SEARCHED_MESSAGE_ID, message.id)
+            startActivity(this)
+        }
+    }
+
+    /**
+     * A search result row stands for one message, so tapping it opens the thread at exactly that
+     * message, with its bubble highlighted (1.0.9 spec).
+     */
+    private fun handleSearchMessageClick(any: Any) {
+        val message = any as? Message ?: return
+        Intent(this, ThreadActivity::class.java).apply {
+            putExtra(THREAD_ID, message.threadId)
+            putExtra(THREAD_TITLE, message.senderName)
+            putExtra(SEARCHED_MESSAGE_ID, message.id)
             startActivity(this)
         }
     }
@@ -984,9 +1036,7 @@ class MainActivity : SimpleActivity() {
         searchHandler.removeCallbacksAndMessages(null)
         searchActive = false
         lastSearchedText = ""
-        searchThreadIds = emptySet()
-        searchBodies = emptyMap()
-        searchMessageIds = emptyMap()
+        searchMessageResults = emptyList()
         invalidateConversationCache()
         binding.searchHolder.beGone()
         binding.searchPlaceholder.beGone()
@@ -1004,8 +1054,6 @@ class MainActivity : SimpleActivity() {
             val conversation = any as Conversation
             putExtra(THREAD_ID, conversation.threadId)
             putExtra(THREAD_TITLE, conversation.title)
-            // a search hit may sit on an older message than the shown snippet - jump right to it
-            putExtra(SEARCHED_MESSAGE_ID, searchMessageIds[conversation.threadId] ?: -1L)
             startActivity(this)
         }
     }
@@ -1074,10 +1122,12 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Runs the query and re-renders the normal list. Results are no longer a separate list of
-     * mixed "conversation" / "message" rows: every hit becomes a row of the current tab, drawn by
-     * the conversation adapter, so the tabs keep working and the match is highlighted in place
-     * (1.0.7 spec).
+     * Runs the query and re-renders the tabs.
+     *
+     * The hits are individual messages, taken straight from the telephony provider, so a thread
+     * matches even when the term only appears in a message older than the one shown in the list -
+     * and every matching message gets its own row (1.0.9 spec). The rows are drawn by the same
+     * adapter the starred tab uses, which is what keeps the UI identical to a normal list row.
      */
     private fun runSearch(text: String) {
         lastSearchedText = text
@@ -1085,39 +1135,24 @@ class MainActivity : SimpleActivity() {
 
         if (text.isEmpty()) {
             searchActive = false
-            searchThreadIds = emptySet()
-            searchBodies = emptyMap()
-            searchMessageIds = emptyMap()
+            searchMessageResults = emptyList()
             refreshConversationList()
             return
         }
 
         searchActive = true
         ensureBackgroundThread {
-            // the messages come straight from the telephony provider, so a thread matches even
-            // when the term only appears in a message older than the one shown in the list
             val messages: List<Message> = try {
                 searchMessages(text)
             } catch (_: Exception) {
                 emptyList()
             }
 
-            val threadIds = HashSet<Long>()
-            val bodies = LinkedHashMap<Long, String>()
-            val messageIds = LinkedHashMap<Long, Long>()
-            // newest first, so the first hit per thread is the one we keep
-            messages.sortedByDescending { it.id }.forEach { message ->
-                threadIds.add(message.threadId)
-                messageIds.putIfAbsent(message.threadId, message.id)
-                if (message.body.isNotEmpty()) {
-                    bodies.putIfAbsent(message.threadId, message.body)
-                }
-            }
-
             if (text == lastSearchedText) {
-                searchThreadIds = threadIds
-                searchBodies = bodies
-                searchMessageIds = messageIds
+                // newest first, matching how every other list is ordered
+                searchMessageResults = messages.sortedWith(
+                    compareByDescending<Message> { it.date }.thenByDescending { it.id }
+                )
                 runOnUiThread { refreshConversationList() }
             }
         }
