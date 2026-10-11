@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!--
-      Ids for views the app adds to commons' search bar at runtime (see
-      MainActivity.setupSearchBox). They have to be declared here because RelativeLayout rules
-      such as layout_toStartOf need a stable id before the view exists.
-    -->
-    <item name="search_clear_button" type="id" />
-</resources>

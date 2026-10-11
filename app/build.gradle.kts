@@ -149,6 +149,7 @@ dependencies {
     implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.viewpager2)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.ez.vcard)
     implementation(libs.kotlinx.serialization.json)

@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.text.Spannable
 import android.text.SpannableStringBuilder
+import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.Menu
@@ -82,6 +83,7 @@ import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_SENDING
 import org.fossify.messages.helpers.extractCopyableStrings
 import org.fossify.messages.helpers.formatMessageDateTime
 import org.fossify.messages.helpers.generateStableId
+import org.fossify.messages.helpers.linkifyUrls
 import org.fossify.messages.helpers.setupAudio
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.helpers.setupDocumentPreview
@@ -126,7 +128,7 @@ class ThreadAdapter(
         private const val MAX_MEDIA_HEIGHT_RATIO = 3
 
         /** Gap between the SIM label, the sender number and the timestamp in the metadata line. */
-        private const val METADATA_PART_GAP_DP = 20
+        private const val METADATA_PART_GAP_DP = 10
     }
 
     init {
@@ -397,7 +399,11 @@ class ThreadAdapter(
             }
 
             threadMessageBody.apply {
-                text = message.body
+                // links are declared here instead of via android:autoLink: the framework pattern
+                // rejects hyphens inside a domain label, which left `https://1-` uncoloured
+                // (1.0.8 spec)
+                text = linkifyUrls(message.body)
+                movementMethod = LinkMovementMethod.getInstance()
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.threadSnippetTextSize.toFloat())
                 beVisibleIf(message.body.isNotEmpty())
                 setOnLongClickListener {
@@ -467,7 +473,7 @@ class ThreadAdapter(
         val builder = SpannableStringBuilder()
         val gapPx = (METADATA_PART_GAP_DP * activity.resources.displayMetrics.density).roundToInt()
 
-        /** Inserts the 30dp/20dp separator, unless nothing has been appended yet. */
+        /** Inserts the [METADATA_PART_GAP_DP] separator, unless nothing has been appended yet. */
         fun appendGap() {
             if (builder.isNotEmpty()) {
                 val start = builder.length

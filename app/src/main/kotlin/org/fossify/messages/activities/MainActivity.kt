@@ -6,24 +6,25 @@ import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Color
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Telephony
 import android.util.TypedValue
-import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.PopupWindow
 import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
-import androidx.appcompat.widget.PopupMenu
-import kotlin.math.abs
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
+import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import org.fossify.commons.dialogs.PermissionRequiredDialog
 import org.fossify.commons.extensions.adjustAlpha
 import org.fossify.commons.extensions.appLaunched
@@ -31,7 +32,6 @@ import org.fossify.commons.extensions.appLockManager
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.areSystemAnimationsEnabled
 import org.fossify.commons.extensions.beGone
-import org.fossify.commons.extensions.beGoneIf
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.checkWhatsNew
@@ -58,6 +58,7 @@ import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.models.FAQItem
 import org.fossify.commons.models.Release
+import org.fossify.commons.views.MyRecyclerView
 import org.fossify.messages.BuildConfig
 import org.fossify.messages.R
 import org.fossify.messages.adapters.ConversationsAdapter
@@ -87,11 +88,28 @@ private const val TAB_CONVERSATIONS = 0
 private const val TAB_SERVICES = 1
 private const val TAB_STARRED = 2
 
-/** Minimum horizontal travel for a fling to count as "switch tab" rather than a scroll. */
-private const val SWIPE_MIN_DISTANCE_DP = 72f
+/** One pager page per tab; ViewPager2 hosts all three at once (1.0.8 rework). */
+private const val TAB_COUNT = 3
 
-/** Search box / hint text; commons' `big_text_size` (18sp) minus 2 (1.0.7 spec). */
-private const val SEARCH_TEXT_SIZE_SP = 16f
+/** Search box / hint text; commons' `big_text_size` (18sp) minus 2 (1.0.7) minus 1 (1.0.8). */
+private const val SEARCH_TEXT_SIZE_SP = 15f
+
+/**
+ * Search box geometry.
+ *
+ * commons' `menu_search.xml` pins the box to `?attr/actionBarSize` (56dp) with 16dp insets on every
+ * side and lets the EditText keep its own minHeight, which is why the box kept looking bulky no
+ * matter what the runtime colours did. Both the height and the insets are cut down hard here and
+ * the EditText's minHeight is cleared, so it can no longer stretch the box back open (1.0.8 rework).
+ */
+private const val SEARCH_BOX_HEIGHT_DP = 36f
+private const val SEARCH_BOX_H_PADDING_DP = 6f
+
+/** Debounce applied to search-box input before the query runs (1.0.8 spec: 1s). */
+private const val SEARCH_DEBOUNCE_MS = 1000L
+
+/** Elevation of the tab row's overflow popup; the spec asks for a bigger shadow (1.0.8). */
+private const val POPUP_MENU_ELEVATION_DP = 12f
 
 class MainActivity : SimpleActivity() {
     override var isSearchBarEnabled = true
@@ -117,39 +135,41 @@ class MainActivity : SimpleActivity() {
     private var searchBodies: Map<Long, String> = emptyMap()
     private var searchMessageIds: Map<Long, Long> = emptyMap()
 
+    /** Debounce plumbing for the search box (1.0.8 spec: 1s). */
+    private val searchHandler = Handler(Looper.getMainLooper())
+    private var pendingSearch: Runnable? = null
+
+    /**
+     * What each tab currently shows, keyed by `tab|query`.
+     *
+     * Switching tabs used to re-filter and re-sort every conversation on the UI thread, and the
+     * pinned-conversation lookup inside the comparator read SharedPreferences once per comparison;
+     * together that is what made left/right swiping stutter (1.0.8 spec). With this cache a swipe
+     * between two tabs re-submits the very same list instance, and `submitList` short-circuits on
+     * an identical reference.
+     */
+    private val conversationCache = HashMap<String, CachedConversationList>()
+
+    private class CachedConversationList(
+        val conversations: ArrayList<Conversation>,
+        val empty: Boolean,
+        val sourceEmpty: Boolean,
+    )
+
     private var tabConversationsView: TextView? = null
     private var tabServicesView: TextView? = null
     private var tabStarredView: TextView? = null
     private var tabRowMenuView: ImageView? = null
 
-    /** Horizontal-swipe support for switching between the three tabs (1.0.7 spec). */
-    private val swipeDetector by lazy {
-        GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent) = true
+    /**
+     * One list per tab, owned by the ViewPager2 pages. Holding a reference to each page's
+     * RecyclerView is what lets a data refresh reach all three tabs, so the neighbour a drag
+     * reveals already holds its rows (1.0.8 rework).
+     */
+    private val pageLists = arrayOfNulls<MyRecyclerView>(TAB_COUNT)
+    private val pageScrollers = arrayOfNulls<RecyclerViewFastScroller>(TAB_COUNT)
 
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 == null) {
-                    return false
-                }
-
-                val dx = e2.x - e1.x
-                val dy = e2.y - e1.y
-                val minDistance = SWIPE_MIN_DISTANCE_DP * resources.displayMetrics.density
-                if (abs(dx) < minDistance || abs(dx) < abs(dy) * 1.5f) {
-                    return false
-                }
-
-                switchTabRelative(if (dx < 0) 1 else -1)
-                return true
-            }
-        })
-    }
-
-    private val swipeTouchListener = View.OnTouchListener { _, event ->
-        // feed the detector but never consume: vertical scrolling must keep working untouched
-        swipeDetector.onTouchEvent(event)
-        false
-    }
+    private lateinit var pagerAdapter: TabPagerAdapter
 
     private val binding by viewBinding(ActivityMainBinding::inflate)
 
@@ -160,9 +180,9 @@ class MainActivity : SimpleActivity() {
         appLaunched(BuildConfig.APPLICATION_ID)
         setupOptionsMenu()
         setupSearchBox()
-        setupTabSwiping()
+        setupTabPager()
 
-        setupEdgeToEdge(padBottomImeAndSystem = listOf(binding.conversationsList))
+        setupEdgeToEdge(padBottomImeAndSystem = listOf(binding.conversationsPager))
 
         clearAllMessagesIfNeeded {
             loadMessages()
@@ -173,16 +193,26 @@ class MainActivity : SimpleActivity() {
         super.onResume()
         updateMenuColors()
 
-        getOrCreateConversationsAdapter().apply {
-            if (storedTextColor != getProperTextColor()) {
-                updateTextColor(getProperTextColor())
-            }
+        pageLists.forEach { list ->
+            when (val adapter = list?.adapter) {
+                is ConversationsAdapter -> {
+                    if (storedTextColor != getProperTextColor()) {
+                        adapter.updateTextColor(getProperTextColor())
+                    }
 
-            if (storedFontSize != config.fontSize) {
-                updateFontSize()
-            }
+                    if (storedFontSize != config.fontSize) {
+                        adapter.updateFontSize()
+                    }
 
-            updateDrafts()
+                    adapter.updateDrafts()
+                }
+
+                is StarredMessagesAdapter -> {
+                    if (storedTextColor != getProperTextColor()) {
+                        adapter.updateTextColor(getProperTextColor())
+                    }
+                }
+            }
         }
 
         updateTextColors(binding.mainCoordinator)
@@ -192,7 +222,7 @@ class MainActivity : SimpleActivity() {
         val properPrimaryColor = getProperPrimaryColor()
         binding.noConversationsPlaceholder2.setTextColor(properPrimaryColor)
         binding.noConversationsPlaceholder2.underlineText()
-        binding.conversationsFastscroller.updateColors(properPrimaryColor)
+        pageScrollers.forEach { it?.updateColors(properPrimaryColor) }
         binding.conversationsProgressBar.setIndicatorColor(properPrimaryColor)
         binding.conversationsProgressBar.trackColor = properPrimaryColor.adjustAlpha(LOWER_ALPHA)
         checkShortcut()
@@ -221,13 +251,43 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Left/right fling on either list switches tab. The listener never consumes the event, so
-     * vertical scrolling and the search-mode list behave exactly as before; it also covers the
-     * search results because they are rendered by the very same list (1.0.7 spec).
+     * Wires up the ViewPager2 that hosts the three tab pages.
+     *
+     * `offscreenPageLimit` is raised to the page count on purpose: all three pages then exist at
+     * the same time, so a drag reveals the neighbour's real list instead of a blank page and
+     * nothing has to inflate a RecyclerView in the middle of the gesture. That, together with the
+     * pager's own page-slide animation, is the "page switch" effect the 1.0.8 rework asks for.
      */
-    private fun setupTabSwiping() {
-        binding.conversationsList.setOnTouchListener(swipeTouchListener)
-        binding.starredList.setOnTouchListener(swipeTouchListener)
+    private fun setupTabPager() {
+        pagerAdapter = TabPagerAdapter()
+        binding.conversationsPager.apply {
+            adapter = pagerAdapter
+            offscreenPageLimit = TAB_COUNT
+            registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) {
+                    onTabPageSelected(position)
+                }
+            })
+        }
+    }
+
+    /**
+     * Keeps the tab strip and the surrounding chrome in sync while the pager moves, whether the
+     * switch came from tapping a tab (which just calls `setCurrentItem`) or from a drag.
+     */
+    private fun onTabPageSelected(position: Int) {
+        if (currentTab == position) {
+            return
+        }
+
+        currentTab = position
+        updateTabColors()
+        binding.conversationsFab.beVisibleIf(position != TAB_STARRED)
+        binding.conversationsProgressBar.beGone()
+        binding.noConversationsPlaceholder.beGone()
+        binding.noConversationsPlaceholder2.beGone()
+        binding.searchHolder.beGone()
+        refreshPage(position)
     }
 
     private fun setupOptionsMenu() {
@@ -258,10 +318,11 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * The search box is commons' `menu_search.xml`, which cannot be edited from here, so its 1.0.7
-     * look is applied at runtime: the decorative magnifier / back-arrow on the left is dropped
-     * (focusing the field opens the search, the system back key closes it), the Settings / About
-     * menu moves to the end of the tab row and a clear button is added on the right.
+     * The search box is commons' `menu_search.xml`, which cannot be edited from here, so its look is
+     * applied at runtime: the decorative magnifier / back-arrow on the left is dropped (focusing the
+     * field opens the search, the system back key closes it) and the Settings / About menu lives at
+     * the end of the tab row. The 1.0.7 clear button is gone as of 1.0.8 - the field searches as you
+     * type instead (debounced in [searchTextChanged]).
      */
     private fun setupSearchBox() {
         val search = binding.mainMenu.binding
@@ -269,74 +330,51 @@ class MainActivity : SimpleActivity() {
         search.topToolbarSearchIcon.visibility = View.GONE
         search.topToolbar.visibility = View.GONE
 
-        val clearButton = ImageView(this).apply {
-            id = R.id.search_clear_button
-            setImageResource(org.fossify.commons.R.drawable.ic_cross_vector)
-            contentDescription = getString(org.fossify.commons.R.string.close)
-            scaleType = ImageView.ScaleType.CENTER
-            val padding = resources.getDimensionPixelSize(org.fossify.commons.R.dimen.medium_margin)
-            setPadding(padding, padding, padding, padding)
-            background = borderlessSelectableBackground()
-            setOnClickListener {
-                // an empty query cannot be cleared, so it closes the search instead
-                if (search.topToolbarSearch.text.isNullOrEmpty()) {
-                    binding.mainMenu.closeSearch()
-                } else {
-                    search.topToolbarSearch.setText("")
-                }
-            }
-        }
-        search.toolbarContainer.addView(
-            clearButton,
-            RelativeLayout.LayoutParams(
-                RelativeLayout.LayoutParams.WRAP_CONTENT,
-                RelativeLayout.LayoutParams.MATCH_PARENT
-            ).apply { addRule(RelativeLayout.ALIGN_PARENT_END) }
-        )
-
-        // the field no longer sits next to the (hidden) icon, and must stop before the clear button
+        // with no clear button on its right the field spans the whole box again
         (search.topToolbarSearch.layoutParams as RelativeLayout.LayoutParams).apply {
             removeRule(RelativeLayout.END_OF)
             removeRule(RelativeLayout.START_OF)
-            addRule(RelativeLayout.START_OF, R.id.search_clear_button)
             marginStart = 0
             marginEnd = 0
         }
-        val textInset = resources.getDimensionPixelSize(org.fossify.commons.R.dimen.activity_margin)
-        search.topToolbarSearch.setPadding(
-            textInset,
-            search.topToolbarSearch.paddingTop,
-            0,
-            search.topToolbarSearch.paddingBottom
-        )
+
+        // commons pins the box to ?attr/actionBarSize (56dp) with 16dp insets on every side and
+        // lets the EditText keep its own minHeight, which is why it stayed bulky no matter what the
+        // runtime colours did. The height and the insets are cut right down here, and the
+        // EditText's minHeight is cleared so it cannot stretch the box back open (1.0.8 rework).
+        val density = resources.displayMetrics.density
+        val boxPaddingH = (SEARCH_BOX_H_PADDING_DP * density).toInt()
+        search.searchBarContainer.apply {
+            layoutParams = layoutParams.apply {
+                height = (SEARCH_BOX_HEIGHT_DP * density).toInt()
+            }
+            setPadding(boxPaddingH, 0, boxPaddingH, 0)
+        }
+        search.topToolbarSearch.apply {
+            minimumHeight = 0
+            setPadding(boxPaddingH, 0, 0, 0)
+        }
 
         applySearchBoxColors()
     }
 
     /**
-     * Re-applied after MySearchMenu.updateColors(): that call unconditionally tints the library's
-     * own search-box background with colorPrimary@25%, so the 1.0.7 background (rounded square,
-     * conversation-page body colour) has to be re-declared every time.
+     * Re-applied after MySearchMenu.updateColors(): that call unconditionally puts a
+     * `colorPrimary@25%` colour filter on whatever Drawable the container happens to have, which is
+     * what used to leave the search box tinted instead of the #F2F2F2 the spec asks for.
+     *
+     * Assigning a *fresh* Drawable instance (rather than `setBackgroundResource`, which may hand
+     * back an instance sharing the tinted constant state) is what makes this stick.
      */
     private fun applySearchBoxColors() {
         val search = binding.mainMenu.binding
-        search.toolbarContainer.setBackgroundResource(R.drawable.search_box_background)
+        search.toolbarContainer.background =
+            AppCompatResources.getDrawable(this, R.drawable.search_menu_background)
         search.topToolbarSearch.apply {
             // a CJK single line sits visually low with the default font padding
             includeFontPadding = false
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
             setTextSize(TypedValue.COMPLEX_UNIT_SP, SEARCH_TEXT_SIZE_SP)
-        }
-        search.toolbarContainer.findViewById<ImageView>(R.id.search_clear_button)
-            ?.applyColorFilter(getProperTextColor())
-    }
-
-    private fun borderlessSelectableBackground(): Drawable? {
-        val value = TypedValue()
-        return if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, value, true)) {
-            AppCompatResources.getDrawable(this, value.resourceId)
-        } else {
-            null
         }
     }
 
@@ -367,8 +405,7 @@ class MainActivity : SimpleActivity() {
      */
     @SuppressLint("NotifyDataSetChanged")
     private fun refreshListAppearance() {
-        binding.conversationsList.adapter?.notifyDataSetChanged()
-        binding.starredList.adapter?.notifyDataSetChanged()
+        pageLists.forEach { it?.adapter?.notifyDataSetChanged() }
     }
 
     /**
@@ -378,8 +415,13 @@ class MainActivity : SimpleActivity() {
      * above only happens on the next layout pass.
      */
     private fun restoreAvatarTextColors() {
-        restoreAvatarTextColorsFor(binding.conversationsList, R.id.conversation_avatar_text)
-        restoreAvatarTextColorsFor(binding.starredList, R.id.starred_avatar_text)
+        pageLists.forEachIndexed { tab, list ->
+            if (list != null) {
+                val avatarId =
+                    if (tab == TAB_STARRED) R.id.starred_avatar_text else R.id.conversation_avatar_text
+                restoreAvatarTextColorsFor(list, avatarId)
+            }
+        }
     }
 
     private fun restoreAvatarTextColorsFor(list: ViewGroup, avatarId: Int) {
@@ -394,6 +436,9 @@ class MainActivity : SimpleActivity() {
     private fun updateMenuColors() {
         binding.mainMenu.updateColors()
         applySearchBoxColors()
+        // once more after the current pass: the tint is applied to whatever background the
+        // container has at the time, so ours has to be the very last word (1.0.8 spec)
+        binding.mainMenu.post { applySearchBoxColors() }
     }
 
     private fun loadMessages() {
@@ -565,23 +610,64 @@ class MainActivity : SimpleActivity() {
         }
     }
 
-    private fun getOrCreateConversationsAdapter(): ConversationsAdapter {
-        var currAdapter = binding.conversationsList.adapter
-        if (currAdapter == null) {
-            hideKeyboard()
-            currAdapter = ConversationsAdapter(
-                activity = this,
-                recyclerView = binding.conversationsList,
-                onRefresh = { notifyDatasetChanged() },
-                itemClick = { handleConversationClick(it) }
-            )
+    /**
+     * Adapter for the ViewPager2: exactly three pages, one per tab. Pages are created on demand and
+     * [bindPage] gives each one its own RecyclerView adapter when it gets bound.
+     */
+    private inner class TabPagerAdapter : RecyclerView.Adapter<TabPagerAdapter.PageHolder>() {
+        inner class PageHolder(
+            val scroller: RecyclerViewFastScroller,
+            val list: MyRecyclerView,
+        ) : RecyclerView.ViewHolder(scroller)
 
-            binding.conversationsList.adapter = currAdapter
+        override fun getItemCount() = TAB_COUNT
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageHolder {
+            val view = layoutInflater.inflate(R.layout.page_conversations, parent, false)
+            val scroller = view as RecyclerViewFastScroller
+            val list = view.findViewById<MyRecyclerView>(R.id.page_list)
+            return PageHolder(scroller, list)
+        }
+
+        override fun onBindViewHolder(holder: PageHolder, position: Int) {
+            bindPage(position, holder.scroller, holder.list)
+        }
+    }
+
+    /**
+     * Attaches a private adapter to one pager page and hands it the data for that tab. Called
+     * whenever the pager binds a page, which also covers the pages it recreates after a data set
+     * change.
+     */
+    private fun bindPage(tab: Int, scroller: RecyclerViewFastScroller, list: MyRecyclerView) {
+        val isNewPage = pageLists[tab] !== list
+        pageLists[tab] = list
+        pageScrollers[tab] = scroller
+
+        if (isNewPage || list.adapter == null) {
+            hideKeyboard()
+            list.adapter = when (tab) {
+                TAB_STARRED -> StarredMessagesAdapter(
+                    activity = this,
+                    recyclerView = list,
+                    itemClick = { handleStarredMessageClick(it) }
+                )
+
+                else -> ConversationsAdapter(
+                    activity = this,
+                    recyclerView = list,
+                    onRefresh = { notifyDatasetChanged() },
+                    itemClick = { handleConversationClick(it) }
+                )
+            }
+
             if (areSystemAnimationsEnabled) {
-                binding.conversationsList.scheduleLayoutAnimation()
+                list.scheduleLayoutAnimation()
             }
         }
-        return currAdapter as ConversationsAdapter
+
+        scroller.updateColors(getProperPrimaryColor())
+        refreshPage(tab)
     }
 
     private fun setupConversations(
@@ -589,6 +675,7 @@ class MainActivity : SimpleActivity() {
         cached: Boolean = false,
     ) {
         allConversationsForTabs = conversations
+        invalidateConversationCache()
         refreshConversationList(cached)
     }
 
@@ -597,44 +684,86 @@ class MainActivity : SimpleActivity() {
      * is active. Every path that used to call `setupConversations` now ends up here, so switching
      * tabs (by tap or by swipe) keeps the active search applied - a result list for the
      * "notifications" tab is never silently replaced by the full one (1.0.7 spec).
+     *
+     * The build itself is skipped whenever the cache already holds this tab + query, which is what
+     * makes swiping between tabs cheap (1.0.8 spec).
      */
     private fun refreshConversationList(cached: Boolean = false) {
-        if (currentTab == TAB_STARRED) {
+        for (tab in 0 until TAB_COUNT) {
+            refreshPage(tab, cached)
+        }
+    }
+
+    /**
+     * Pushes one tab's data into its page.
+     *
+     * Every tab is refreshed - not just the visible one - so the page a drag is about to reveal
+     * already holds its rows. The loading / empty hints are only touched for the visible tab, so a
+     * background refresh can never flash a placeholder over the page being looked at (1.0.8 rework).
+     */
+    private fun refreshPage(tab: Int, cached: Boolean = false) {
+        if (tab == TAB_STARRED) {
             // the starred tab has its own adapter, but it answers the same query (1.0.7 spec)
             loadStarredMessages()
             return
         }
 
+        val cacheKey = "$tab|${if (searchActive) lastSearchedText else ""}"
+        val listed = conversationCache.getOrPut(cacheKey) { buildConversationList(tab) }
+
+        // the page may not exist yet (ViewPager2 creates pages lazily): the list is still built and
+        // cached here so the visible tab's loading / empty state is right immediately, and bindPage
+        // picks the cached data up the moment the page appears
+        pageLists[tab]?.let { list ->
+            try {
+                (list.adapter as? ConversationsAdapter)?.apply {
+                    highlightText = if (searchActive) lastSearchedText else ""
+                    updateConversations(listed.conversations)
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        if (tab == currentTab) {
+            if (cached && config.appRunCount == 1) {
+                // there are no cached conversations on the first run so we show the
+                // loading placeholder and progress until we are done loading from telephony
+                showOrHideProgress(listed.sourceEmpty)
+            } else {
+                showOrHideProgress(false)
+                showOrHidePlaceholder(listed.empty)
+            }
+            updateSearchHolder(listed.empty)
+        }
+    }
+
+    /**
+     * Filters, sorts and caches the list for one tab / the active query. Split out of
+     * [refreshConversationList] so a swipe between two tabs can reuse what it already built, and
+     * parameterised by tab so [refreshPage] can build any of the three.
+     */
+    private fun buildConversationList(tab: Int): CachedConversationList {
         val source = if (searchActive) computeSearchMatches() else allConversationsForTabs
-        val filteredConversations = filterConversationsForTab(source)
-        val sortedConversations = filteredConversations
+        val filtered = filterConversationsForTab(source, tab)
+        // the pinned set is read once: doing the lookup *inside* the comparator meant a
+        // SharedPreferences read per comparison, which is what made tab switches stall
+        val pinned = config.pinnedConversations
+        val sorted = filtered
             .sortedWith(
-                compareByDescending<Conversation> {
-                    config.pinnedConversations.contains(it.threadId.toString())
-                }.thenByDescending { it.date }
+                compareByDescending<Conversation> { pinned.contains(it.threadId.toString()) }
+                    .thenByDescending { it.date }
             ).toMutableList() as ArrayList<Conversation>
 
-        if (cached && config.appRunCount == 1) {
-            // there are no cached conversations on the first run so we show the
-            // loading placeholder and progress until we are done loading from telephony
-            showOrHideProgress(source.isEmpty())
-        } else {
-            showOrHideProgress(false)
-            showOrHidePlaceholder(filteredConversations.isEmpty())
-        }
-        updateSearchHolder(filteredConversations.isEmpty())
+        return CachedConversationList(
+            conversations = sorted,
+            empty = filtered.isEmpty(),
+            sourceEmpty = source.isEmpty(),
+        )
+    }
 
-        try {
-            getOrCreateConversationsAdapter().apply {
-                highlightText = if (searchActive) lastSearchedText else ""
-                updateConversations(sortedConversations) {
-                    if (!cached) {
-                        showOrHidePlaceholder(currentList.isEmpty())
-                    }
-                }
-            }
-        } catch (_: Exception) {
-        }
+    /** Drops every cached tab list; the next refresh rebuilds from scratch. */
+    private fun invalidateConversationCache() {
+        conversationCache.clear()
     }
 
     /**
@@ -668,8 +797,9 @@ class MainActivity : SimpleActivity() {
 
     private fun filterConversationsForTab(
         conversations: ArrayList<Conversation>,
+        tab: Int,
     ): ArrayList<Conversation> {
-        return when (currentTab) {
+        return when (tab) {
             TAB_SERVICES -> ArrayList(
                 conversations.filter { isServiceConversation(it.phoneNumber, it.snippet) }
             )
@@ -700,15 +830,48 @@ class MainActivity : SimpleActivity() {
         tabConversationsView?.setOnClickListener { switchTab(TAB_CONVERSATIONS) }
         tabServicesView?.setOnClickListener { switchTab(TAB_SERVICES) }
         tabStarredView?.setOnClickListener { switchTab(TAB_STARRED) }
-        // Settings / About moved out of the search box to the end of this row (1.0.7 spec)
-        tabRowMenuView?.setOnClickListener { anchor ->
-            PopupMenu(this, anchor).apply {
-                menuInflater.inflate(R.menu.menu_main, menu)
-                setOnMenuItemClickListener { handleMenuItemClick(it) }
-                show()
-            }
-        }
+        // Settings / About moved out of the search box to the end of this row (1.0.7 spec).
+        // It is a custom popup rather than a PopupMenu: the theme's static text colour is
+        // near-white (commons' AppTheme.Base derives from Theme.Material3.Dark and nothing
+        // repaints a popup), so a stock PopupMenu showed invisible items on a light background
+        // (1.0.8 spec).
+        tabRowMenuView?.setOnClickListener { anchor -> showTabRowMenu(anchor) }
         updateTabColors()
+    }
+
+    /**
+     * White popup anchored to the tab row's overflow button, holding Settings and About.
+     *
+     * Opaque background + elevation are what give it the drop shadow the 1.0.8 spec asks for:
+     * the system derives a PopupWindow's shadow outline from its background drawable.
+     */
+    @Suppress("DEPRECATION")
+    private fun showTabRowMenu(anchor: View) {
+        val content = layoutInflater.inflate(R.layout.popup_main_menu, null)
+        val popup = PopupWindow(
+            content,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            // API 36 removed getBackgroundDrawable(), so the Kotlin synthetic property
+            // `backgroundDrawable` no longer resolves — must call the setter explicitly.
+            setBackgroundDrawable(AppCompatResources.getDrawable(this@MainActivity, R.drawable.popup_menu_background))
+            elevation = POPUP_MENU_ELEVATION_DP * resources.displayMetrics.density
+            isOutsideTouchable = true
+            isFocusable = true
+        }
+
+        content.findViewById<View>(R.id.popup_menu_settings).setOnClickListener {
+            popup.dismiss()
+            launchSettings()
+        }
+        content.findViewById<View>(R.id.popup_menu_about).setOnClickListener {
+            popup.dismiss()
+            launchAbout()
+        }
+
+        val gap = resources.getDimensionPixelSize(org.fossify.commons.R.dimen.small_margin)
+        popup.showAsDropDown(anchor, 0, -gap, Gravity.END)
     }
 
     /** The selected tab uses the accent colour, the rest follow the theme (1.0.7 spec). */
@@ -721,39 +884,16 @@ class MainActivity : SimpleActivity() {
         tabRowMenuView?.applyColorFilter(normalColor)
     }
 
+    /**
+     * Tapping a tab simply asks the pager to slide to its page; the page-change callback then keeps
+     * the strip and the surrounding chrome in sync, so a tap and a drag behave identically
+     * (1.0.8 rework).
+     */
     private fun switchTab(tab: Int) {
         if (currentTab == tab) {
             return
         }
-
-        currentTab = tab
-        val isStarredTab = tab == TAB_STARRED
-
-        updateTabColors()
-
-        binding.conversationsList.beVisibleIf(!isStarredTab)
-        binding.conversationsProgressBar.beGone()
-        binding.conversationsFastscroller.beVisibleIf(!isStarredTab)
-        binding.conversationsFab.beVisibleIf(!isStarredTab)
-        binding.starredList.beVisibleIf(isStarredTab)
-
-        binding.noConversationsPlaceholder.beGone()
-        binding.noConversationsPlaceholder2.beGone()
-        binding.noStarredPlaceholder.beGone()
-
-        if (isStarredTab) {
-            loadStarredMessages()
-        } else {
-            refreshConversationList()
-        }
-    }
-
-    /** Moves one tab left/right; swipe gestures use this (1.0.7 spec). */
-    private fun switchTabRelative(delta: Int) {
-        val next = currentTab + delta
-        if (next in TAB_CONVERSATIONS..TAB_STARRED) {
-            switchTab(next)
-        }
+        binding.conversationsPager.setCurrentItem(tab, true)
     }
 
     private fun loadStarredMessages() {
@@ -777,25 +917,16 @@ class MainActivity : SimpleActivity() {
             }
 
             runOnUiThread {
-                val isEmpty = filtered.isEmpty()
-                binding.starredList.beVisibleIf(!isEmpty)
-                binding.noStarredPlaceholder.beVisibleIf(isEmpty)
-                getOrCreateStarredAdapter().apply { highlightText = searchedText }.submitList(filtered)
+                val list = pageLists[TAB_STARRED] ?: return@runOnUiThread
+                (list.adapter as? StarredMessagesAdapter)?.apply {
+                    highlightText = searchedText
+                }?.submitList(filtered)
+
+                if (currentTab == TAB_STARRED) {
+                    showOrHidePlaceholder(filtered.isEmpty())
+                }
             }
         }
-    }
-
-    private fun getOrCreateStarredAdapter(): StarredMessagesAdapter {
-        var currAdapter = binding.starredList.adapter
-        if (currAdapter == null) {
-            currAdapter = StarredMessagesAdapter(
-                activity = this,
-                recyclerView = binding.starredList,
-                itemClick = { handleStarredMessageClick(it) }
-            )
-            binding.starredList.adapter = currAdapter
-        }
-        return currAdapter as StarredMessagesAdapter
     }
 
     private fun handleStarredMessageClick(any: Any) {
@@ -821,10 +952,12 @@ class MainActivity : SimpleActivity() {
     private fun showOrHidePlaceholder(show: Boolean) {
         // while a search is active the "no results" hint comes from the search holder instead
         val visible = show && !searchActive
-        binding.conversationsFastscroller.beGoneIf(visible)
+        val isStarredTab = currentTab == TAB_STARRED
+        binding.noConversationsPlaceholder.text =
+            getString(if (isStarredTab) R.string.no_starred_messages else R.string.no_conversations_found)
         binding.noConversationsPlaceholder.beVisibleIf(visible)
-        binding.noConversationsPlaceholder.text = getString(R.string.no_conversations_found)
-        binding.noConversationsPlaceholder2.beVisibleIf(visible)
+        // the "start a conversation" shortcut only makes sense on the two conversation tabs
+        binding.noConversationsPlaceholder2.beVisibleIf(visible && !isStarredTab)
     }
 
     /**
@@ -832,21 +965,29 @@ class MainActivity : SimpleActivity() {
      * found" when nothing matched) and hides it as soon as there are results to look at - the
      * results themselves are rendered by the normal conversation list (1.0.7 spec).
      */
+    /**
+     * Shows the "no results" hint and hides it as soon as there are results to look at - the
+     * results themselves are rendered by the normal conversation list (1.0.7 spec).
+     *
+     * The old "type at least 2 characters" state is gone: the search now runs on any non-empty
+     * query (1.0.8 spec).
+     */
     private fun updateSearchHolder(noResults: Boolean) {
-        val tooShort = lastSearchedText.length < 2
-        val showHolder = binding.mainMenu.isSearchOpen && (tooShort || noResults)
-        binding.searchPlaceholder.beVisibleIf(showHolder && !tooShort)
-        binding.searchPlaceholder2.beVisibleIf(showHolder && tooShort)
+        val showHolder = binding.mainMenu.isSearchOpen && noResults
+        binding.searchPlaceholder.beVisibleIf(showHolder)
+        binding.searchPlaceholder2.beGone()
         binding.searchHolder.alpha = 1f
         binding.searchHolder.beVisibleIf(showHolder)
     }
 
     private fun endSearch() {
+        searchHandler.removeCallbacksAndMessages(null)
         searchActive = false
         lastSearchedText = ""
         searchThreadIds = emptySet()
         searchBodies = emptyMap()
         searchMessageIds = emptyMap()
+        invalidateConversationCache()
         binding.searchHolder.beGone()
         binding.searchPlaceholder.beGone()
         binding.searchPlaceholder2.beGone()
@@ -855,7 +996,7 @@ class MainActivity : SimpleActivity() {
 
     @SuppressLint("NotifyDataSetChanged")
     private fun notifyDatasetChanged() {
-        getOrCreateConversationsAdapter().notifyDataSetChanged()
+        pageLists.forEach { it?.adapter?.notifyDataSetChanged() }
     }
 
     private fun handleConversationClick(any: Any) {
@@ -915,18 +1056,34 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Runs the query and re-renders the normal list. Results are no longer a separate list of
-     * mixed "conversation" / "message" rows: every hit becomes a row of the current tab, drawn by
-     * the conversation adapter, so the tabs keep working and the match is highlighted in place
-     * (1.0.7 spec).
+     * Debounced entry point for search-box input (1.0.8 spec: 1s).
+     *
+     * Every keystroke cancels the pending query, so the telephony provider is only hit once the
+     * user stops typing. There is no minimum length any more: an empty box restores the plain list
+     * and anything else is searched for as-is.
      */
     private fun searchTextChanged(text: String) {
         if (!binding.mainMenu.isSearchOpen) {
             return
         }
 
+        pendingSearch?.let { searchHandler.removeCallbacks(it) }
+        val runnable = Runnable { runSearch(text) }
+        pendingSearch = runnable
+        searchHandler.postDelayed(runnable, SEARCH_DEBOUNCE_MS)
+    }
+
+    /**
+     * Runs the query and re-renders the normal list. Results are no longer a separate list of
+     * mixed "conversation" / "message" rows: every hit becomes a row of the current tab, drawn by
+     * the conversation adapter, so the tabs keep working and the match is highlighted in place
+     * (1.0.7 spec).
+     */
+    private fun runSearch(text: String) {
         lastSearchedText = text
-        if (text.length < 2) {
+        invalidateConversationCache()
+
+        if (text.isEmpty()) {
             searchActive = false
             searchThreadIds = emptySet()
             searchBodies = emptyMap()

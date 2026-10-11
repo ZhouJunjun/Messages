@@ -5,4 +5,17 @@
 
     <!-- conversation page background, per the 1.0.2 reference (#F2F2F2) -->
     <color name="thread_page_background">#FFF2F2F2</color>
+
+    <!--
+      Text colour of the tab row's overflow popup (1.0.8 spec). Pinned explicitly because the
+      theme's static android:textColor is near-white and the popup is not repainted at runtime.
+    -->
+    <color name="popup_menu_text_color">#DE000000</color>
+
+    <!--
+      Launcher icon background - Morandi blue (1.0.8 rework). The icon used to borrow the theme's
+      @color/color_primary, which is also the toolbar / sent-bubble colour, so it gets its own
+      entry rather than overriding the theme colour.
+    -->
+    <color name="launcher_background">#FF8EA6B8</color>
 </resources>

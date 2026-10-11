@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One page of the conversations ViewPager2. Each of the three tabs gets its own instance of this
+  layout, so a horizontal drag keeps the outgoing and the incoming page on screen at the same time
+  (1.0.8 rework).
+-->
+<com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/page_fastscroller"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <org.fossify.commons.views.MyRecyclerView
+        android:id="@+id/page_list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:layoutAnimation="@anim/layout_animation"
+        android:overScrollMode="ifContentScrolls"
+        android:scrollbars="none"
+        app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager" />
+
+</com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller>

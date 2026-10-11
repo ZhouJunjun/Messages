@@ -14,11 +14,14 @@
         android:paddingStart="@dimen/medium_margin"
         android:paddingEnd="@dimen/medium_margin">
 
+        <!--
+          No `?selectableItemBackgroundBorderless` on the tabs: its circular ripple was the
+          "feedback circle" the 1.0.8 spec asks to remove.
+        -->
         <org.fossify.commons.views.MyTextView
             android:id="@+id/tab_conversations"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?selectableItemBackgroundBorderless"
             android:paddingStart="@dimen/medium_margin"
             android:paddingTop="@dimen/small_margin"
             android:paddingEnd="@dimen/medium_margin"
@@ -31,7 +34,6 @@
             android:id="@+id/tab_services"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?selectableItemBackgroundBorderless"
             android:paddingStart="@dimen/medium_margin"
             android:paddingTop="@dimen/small_margin"
             android:paddingEnd="@dimen/medium_margin"
@@ -44,7 +46,6 @@
             android:id="@+id/tab_starred"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?selectableItemBackgroundBorderless"
             android:paddingStart="@dimen/medium_margin"
             android:paddingTop="@dimen/small_margin"
             android:paddingEnd="@dimen/medium_margin"
@@ -61,14 +62,13 @@
 
         <!--
           The app menu (Settings / About) used to be the MaterialToolbar living inside the search
-          box. It now anchors the right end of the tab row instead, and the search box keeps only
-          its input + a clear button (1.0.7 spec).
+          box. It now anchors the right end of the tab row instead (1.0.7 spec) and opens a custom
+          white popup (1.0.8 spec).
         -->
         <ImageView
             android:id="@+id/tab_row_menu"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?selectableItemBackgroundBorderless"
             android:contentDescription="@string/settings"
             android:padding="@dimen/medium_margin"
             android:src="@drawable/ic_three_dots_vector" />

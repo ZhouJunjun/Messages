@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Contents of the tab row's overflow popup (1.0.8 spec).
+
+  A plain PopupMenu rendered the two items with the *static* theme text colour: commons'
+  AppTheme.Base derives from Theme.Material3.Dark.NoActionBar and sets
+  `android:textColor = @color/default_text_color = @color/theme_dark_text_color = md_grey_200`,
+  i.e. near-white. The app normally repaints its TextViews at runtime, but a popup is a separate
+  window and kept the near-white colour, so "Settings" / "About" were invisible on the light
+  popup background. Here the colours are pinned explicitly instead.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:minWidth="168dp"
+    android:orientation="vertical"
+    android:paddingTop="@dimen/small_margin"
+    android:paddingBottom="@dimen/small_margin">
+
+    <TextView
+        android:id="@+id/popup_menu_settings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/selectableItemBackground"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:paddingStart="@dimen/activity_margin"
+        android:paddingEnd="@dimen/activity_margin"
+        android:text="@string/settings"
+        android:textColor="@color/popup_menu_text_color"
+        android:textSize="@dimen/big_text_size" />
+
+    <TextView
+        android:id="@+id/popup_menu_about"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/selectableItemBackground"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:paddingStart="@dimen/activity_margin"
+        android:paddingEnd="@dimen/activity_margin"
+        android:text="@string/about"
+        android:textColor="@color/popup_menu_text_color"
+        android:textSize="@dimen/big_text_size" />
+
+</LinearLayout>

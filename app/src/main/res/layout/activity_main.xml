@@ -29,6 +29,18 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
 
+                <!--
+                  One page per tab. A horizontal drag moves the entire page, so the neighbouring tab
+                  stays on screen while the finger is still down - the page-sliding effect the
+                  1.0.8 rework asks for. Each page is its own page_conversations.xml instance with a
+                  private RecyclerView + adapter, created by MainActivity.TabPagerAdapter.
+                -->
+                <androidx.viewpager2.widget.ViewPager2
+                    android:id="@+id/conversations_pager"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <!-- declared after the pager so the bar draws on top of the page content -->
                 <com.google.android.material.progressindicator.LinearProgressIndicator
                     android:id="@+id/conversations_progress_bar"
                     android:layout_width="match_parent"
@@ -68,47 +80,6 @@
                     android:text="@string/start_conversation"
                     android:textSize="@dimen/bigger_text_size"
                     android:visibility="gone" />
-
-                <com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
-                    android:id="@+id/conversations_fastscroller"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
-
-                    <org.fossify.commons.views.MyRecyclerView
-                        android:id="@+id/conversations_list"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:clipToPadding="false"
-                        android:layoutAnimation="@anim/layout_animation"
-                        android:overScrollMode="ifContentScrolls"
-                        android:scrollbars="none"
-                        app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager" />
-
-                </com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller>
-
-                <org.fossify.commons.views.MyTextView
-                    android:id="@+id/no_starred_placeholder"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_centerHorizontal="true"
-                    android:layout_marginTop="@dimen/bigger_margin"
-                    android:alpha="0.8"
-                    android:gravity="center"
-                    android:paddingLeft="@dimen/activity_margin"
-                    android:paddingRight="@dimen/activity_margin"
-                    android:text="@string/no_starred_messages"
-                    android:textSize="@dimen/bigger_text_size"
-                    android:textStyle="italic"
-                    android:visibility="gone" />
-
-                <org.fossify.commons.views.MyRecyclerView
-                    android:id="@+id/starred_list"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:clipToPadding="false"
-                    android:scrollbars="none"
-                    android:visibility="gone"
-                    app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager" />
             </RelativeLayout>
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
@@ -150,9 +121,9 @@
                 android:textStyle="italic" />
 
             <!--
-              No list here any more: search hits are rendered by the normal conversations list, so
-              they keep the tab strip, the row layout and the swipe navigation (1.0.7 spec). This
-              holder now only carries the two hint labels.
+              No list here any more: search hits are rendered by the three pager pages, so they keep
+              the tab strip, the row layout and the swipe navigation (1.0.7 spec). This holder now
+              only carries the two hint labels.
             -->
         </RelativeLayout>
     </RelativeLayout>

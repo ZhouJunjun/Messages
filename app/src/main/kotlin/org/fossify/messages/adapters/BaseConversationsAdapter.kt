@@ -99,7 +99,10 @@ abstract class BaseConversationsAdapter(
         commitCallback: (() -> Unit)? = null,
     ) {
         saveRecyclerViewState()
-        submitList(newConversations.toList(), commitCallback)
+        // submitted as-is (no defensive copy) on purpose: ListAdapter.submitList returns
+        // immediately for an identical list reference, which is what makes swiping between tabs
+        // free once the per-tab cache hands back the same instance (1.0.8 spec)
+        submitList(newConversations, commitCallback)
     }
 
     @SuppressLint("NotifyDataSetChanged")

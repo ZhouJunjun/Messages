@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  White background of the tab row's overflow popup (1.0.8 spec). Kept opaque on purpose: the
+  system derives the window's drop shadow outline from the PopupWindow background, so this is
+  what makes the "bigger shadow" the spec asks for possible.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="8dp" />
+    <solid android:color="@android:color/white" />
+</shape>
