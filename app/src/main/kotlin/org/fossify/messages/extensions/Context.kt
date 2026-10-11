@@ -47,6 +47,7 @@ import org.fossify.commons.helpers.PERMISSION_READ_CONTACTS
 import org.fossify.commons.helpers.SimpleContactsHelper
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isQPlus
+import org.fossify.commons.models.BlockedNumber
 import org.fossify.commons.models.PhoneNumber
 import org.fossify.commons.models.SimpleContact
 import org.fossify.messages.R
@@ -145,9 +146,11 @@ fun Context.getMessages(
     val blockedNumbers = getBlockedNumbers()
     var messages = ArrayList<Message>()
     queryCursor(uri, projection, selection, selectionArgs, sortOrder, showErrors = true) { cursor ->
-        val senderNumber = cursor.getStringValue(Sms.ADDRESS) ?: return@queryCursor
-        val isNumberBlocked = blockStatus.getOrPut(senderNumber) { isNumberBlocked(senderNumber, blockedNumbers) }
-        if (isNumberBlocked) {
+        // An SMS whose ADDRESS is null/empty is still a real message - never drop it (1.0.5 spec).
+        val senderNumber = cursor.getStringValue(Sms.ADDRESS).orEmpty()
+        val isBlocked = senderNumber.isNotEmpty() &&
+            blockStatus.getOrPut(senderNumber) { isNumberBlocked(senderNumber, blockedNumbers) }
+        if (isBlocked) {
             return@queryCursor
         }
 
@@ -248,7 +251,8 @@ fun Context.searchMessages(text: String, limit: Int = SEARCH_RESULTS_LIMIT): Arr
 
     val messages = ArrayList<Message>()
     queryCursor(uri, projection, selection, selectionArgs, sortOrder, showErrors = true) { cursor ->
-        val senderNumber = cursor.getStringValue(Sms.ADDRESS) ?: return@queryCursor
+        // Do not skip messages whose address is missing - they must stay searchable (1.0.5 spec).
+        val senderNumber = cursor.getStringValue(Sms.ADDRESS).orEmpty()
         val id = cursor.getLongValue(Sms._ID)
         val body = cursor.getStringValue(Sms.BODY)
         val type = cursor.getIntValue(Sms.TYPE)
@@ -478,10 +482,32 @@ private fun Context.getThreadIdsWithNewestMms(): HashSet<Long> {
     return result
 }
 
+/**
+ * Result of [scanConversations]. [complete] is false as soon as a row may have been lost (a
+ * per-row failure, or the query itself failing), which means the result must not be treated as
+ * "everything else was deleted".
+ */
+data class ConversationsScan(
+    val conversations: ArrayList<Conversation>,
+    val complete: Boolean,
+)
+
 fun Context.getConversations(
     threadId: Long? = null,
     privateContacts: ArrayList<SimpleContact> = ArrayList(),
-): ArrayList<Conversation> {
+): ArrayList<Conversation> = scanConversations(privateContacts, threadId).conversations
+
+/**
+ * Like [getConversations], but also reports whether the scan finished without losing any row.
+ *
+ * Callers that delete every conversation a scan did not return must honour
+ * [ConversationsScan.complete]: an aborted scan otherwise hides conversations from the list *and*
+ * from the search at the same time (1.0.5 spec).
+ */
+fun Context.scanConversations(
+    privateContacts: ArrayList<SimpleContact> = ArrayList(),
+    threadId: Long? = null,
+): ConversationsScan {
     val uri = "${Threads.CONTENT_URI}?simple=true".toUri()
     val projection = mutableListOf(
         Threads._ID,
@@ -502,9 +528,28 @@ fun Context.getConversations(
 
     val conversations = ArrayList<Conversation>()
     val simpleContactHelper = SimpleContactsHelper(this)
-    val blockedNumbers = getBlockedNumbers()
-    val unreadMap = getUnreadCountsByThread()
-    val mmsThreadIds = getThreadIdsWithNewestMms()
+    // All three lookups below only decorate a row. When one of them threw, the whole scan used to
+    // be abandoned and the caller then deleted every conversation it did not get back - so a
+    // failure in e.g. the blocked-numbers DB silently emptied the list. Fall back instead.
+    var blockedNumbers = ArrayList<BlockedNumber>()
+    try {
+        blockedNumbers = getBlockedNumbers()
+    } catch (e: Exception) {
+        showErrorToast(e)
+    }
+    var unreadMap: Map<Long, Int> = HashMap()
+    try {
+        unreadMap = getUnreadCountsByThread()
+    } catch (e: Exception) {
+        showErrorToast(e)
+    }
+    var mmsThreadIds: Set<Long> = HashSet()
+    try {
+        mmsThreadIds = getThreadIdsWithNewestMms()
+    } catch (e: Exception) {
+        showErrorToast(e)
+    }
+    var complete = true
     try {
         queryCursorUnsafe(
             uri,
@@ -525,7 +570,14 @@ fun Context.getConversations(
                     // The telephony provider's own snippet for an MMS is not displayable text,
                     // and that is what showed up as garbage in the list. Rebuild it from the
                     // message parts instead; a picture-only MMS turns into "[图片]" (1.0.4 spec).
-                    snippet = getThreadSnippet(id)
+                    snippet = try {
+                        getThreadSnippet(id)
+                    } catch (e: Exception) {
+                        // Keep the thread with whatever the provider gave us rather than losing
+                        // the whole row (1.0.5 spec).
+                        showErrorToast(e)
+                        snippet
+                    }
                 }
 
                 var date = cursor.getLongValue(Threads.DATE)
@@ -539,7 +591,7 @@ fun Context.getConversations(
                     date = draft.date / 1000
                 }
 
-                val phoneNumbers = try {
+                val phoneNumbers: ArrayList<String> = try {
                     val rawIds = cursor.getStringValue(Threads.RECIPIENT_IDS).orEmpty()
                     val recipientIds =
                         rawIds.split(" ").filter { it.areDigitsOnly() }.map { it.toInt() }
@@ -547,24 +599,27 @@ fun Context.getConversations(
                     getThreadPhoneNumbers(recipientIds)
                 } catch (e: Exception) {
                     showErrorToast(e)
-                    return@queryCursorUnsafe
+                    ArrayList()
                 }
-                if (phoneNumbers.isEmpty() || phoneNumbers.any {
-                        isNumberBlocked(
-                            it,
-                            blockedNumbers
-                        )
-                    }) {
+
+                // A thread is NEVER dropped here just because its recipients could not be
+                // resolved. Dropping it removed the conversation from the list and from the
+                // search results at the same time - which is precisely the reported "the SMS that
+                // other apps show is missing from this app" (1.0.5 spec). The thread keeps its
+                // threadId, so it stays openable.
+                val numbers = phoneNumbers.filter { it.isNotEmpty() }
+                if (numbers.any { isNumberBlocked(it, blockedNumbers) }) {
                     return@queryCursorUnsafe
                 }
 
-                val names = getThreadContactNames(phoneNumbers, privateContacts)
+                val names = getThreadContactNames(numbers, privateContacts)
                 val title = TextUtils.join(", ", names.toTypedArray())
+                    .ifEmpty { getString(org.fossify.commons.R.string.unknown) }
                 val photoUri =
-                    if (phoneNumbers.size == 1) simpleContactHelper.getPhotoUriFromPhoneNumber(
-                        phoneNumbers.first()
+                    if (numbers.size == 1) simpleContactHelper.getPhotoUriFromPhoneNumber(
+                        numbers.first()
                     ) else ""
-                val isGroupConversation = phoneNumbers.size > 1
+                val isGroupConversation = numbers.size > 1
                 val read = cursor.getIntValue(Threads.READ) == 1
                 val unreadCount = if (!read) unreadMap[id] ?: 0 else 0
                 val conversation = Conversation(
@@ -575,20 +630,22 @@ fun Context.getConversations(
                     title = title,
                     photoUri = photoUri,
                     isGroupConversation = isGroupConversation,
-                    phoneNumber = phoneNumbers.first(),
+                    phoneNumber = numbers.firstOrNull() ?: "",
                     unreadCount = unreadCount,
                 )
                 conversations.add(conversation)
             } catch (e: Exception) {
                 showErrorToast(e)
+                complete = false
             }
         }
     } catch (e: Exception) {
         showErrorToast(e)
+        complete = false
     }
 
     conversations.sortByDescending { it.date }
-    return conversations
+    return ConversationsScan(conversations, complete)
 }
 
 private fun Context.queryCursorUnsafe(
@@ -1270,7 +1327,10 @@ fun Context.updateLastConversationMessage(threadIds: Iterable<Long>) {
     try {
         contentResolver.delete(uri, selection, null)
         for (threadId in threadIds) {
-            val newConversation = getConversations(threadId)[0]
+            // firstOrNull(): a thread the scan did not return (e.g. an unresolvable recipient)
+            // used to make [0] throw IndexOutOfBoundsException, which aborted the loop for every
+            // remaining thread and left their cached snippet/date stale forever (1.0.5 spec).
+            val newConversation = getConversations(threadId).firstOrNull() ?: continue
             insertOrUpdateConversation(newConversation)
         }
     } catch (_: Exception) {

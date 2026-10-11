@@ -222,8 +222,8 @@ abstract class BaseConversationsAdapter(
             }
 
             val copyables = extractCopyableStrings(conversation.snippet)
-            // Dividers follow the snippet colour at 80% alpha (1.0.4 spec).
-            val dividerColor = config.homeSnippetTextColor.adjustAlpha(0.8f)
+            // Dividers use the same colour as the thread toolbar's bottom border (1.0.5 spec).
+            val dividerColor = activity.getColor(org.fossify.commons.R.color.divider_grey)
             conversationCopyablesDivider.apply {
                 beVisibleIf(copyables.isNotEmpty())
                 setBackgroundColor(dividerColor)

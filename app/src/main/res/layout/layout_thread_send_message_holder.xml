@@ -110,6 +110,7 @@
         android:background="@android:color/transparent"
         android:gravity="center_vertical"
         android:hint="@string/type_a_message"
+        android:includeFontPadding="false"
         android:inputType="textCapSentences|textMultiLine"
         android:minHeight="@dimen/normal_icon_size"
         android:maxLines="8"
@@ -165,7 +166,12 @@
         tools:ignore="HardcodedText"
         tools:visibility="visible" />
 
-    <org.fossify.commons.views.MyButton
+    <!--
+      An ImageView instead of the previous `MyButton` + `android:drawableTop`: a MaterialButton
+      cannot centre a lone compound drawable exactly (its own insets/padding and icon gravity
+      shift it), which is why the bottom bar never looked horizontally aligned (1.0.5 spec).
+    -->
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/thread_send_message"
         android:layout_width="@dimen/normal_icon_size"
         android:layout_height="@dimen/normal_icon_size"
@@ -174,8 +180,8 @@
         android:background="?selectableItemBackgroundBorderless"
         android:clickable="false"
         android:contentDescription="@string/ok"
-        android:drawableTop="@drawable/ic_send_vector"
-        android:gravity="center"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_send_vector"
         app:layout_constraintBottom_toBottomOf="@+id/thread_type_message"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@+id/thread_type_message" />

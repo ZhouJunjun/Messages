@@ -62,7 +62,7 @@ import org.fossify.messages.extensions.clearAllMessagesIfNeeded
 import org.fossify.messages.extensions.clearExpiredScheduledMessages
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.conversationsDB
-import org.fossify.messages.extensions.getConversations
+import org.fossify.messages.extensions.scanConversations
 import org.fossify.messages.extensions.getMessages
 import org.fossify.messages.extensions.insertOrUpdateConversation
 import org.fossify.messages.extensions.messagesDB
@@ -347,14 +347,17 @@ class MainActivity : SimpleActivity() {
         val privateCursor = getMyContactsCursor(favoritesOnly = false, withPhoneNumbersOnly = true)
         ensureBackgroundThread {
             val privateContacts = MyContactsContentProvider.getSimpleContacts(this, privateCursor)
-            val conversations = getConversations(privateContacts = privateContacts)
+            val scan = scanConversations(privateContacts = privateContacts)
+            val conversations = scan.conversations
 
-            // A scan that comes back completely empty while conversations are cached means the
-            // scan itself failed (provider hiccup, revoked permission, aborted cursor) rather
-            // than "every single thread was deleted". Purging in that case would wipe the whole
-            // list, which is the bug behind the conversation row vanishing from the list right
-            // after it was opened and closed (1.0.4 spec).
-            val scanIsUsable = conversations.isNotEmpty() || cachedConversations.isEmpty()
+            // A scan may only be used to delete cached conversations when it actually completed.
+            // A scan that came back empty while conversations are cached means the scan itself
+            // failed (provider hiccup, revoked permission, aborted cursor) rather than "every
+            // single thread was deleted"; a scan that lost rows mid-way is just as unreliable.
+            // Purging in either case hides conversations from the list and from the search
+            // (1.0.4 / 1.0.5 spec).
+            val scanIsUsable = scan.complete &&
+                (conversations.isNotEmpty() || cachedConversations.isEmpty())
 
             conversations.forEach { clonedConversation ->
                 val threadIds = cachedConversations.map { it.threadId }

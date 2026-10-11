@@ -1,5 +1,5 @@
 <resources>
-    <string name="package_name">io.github.zhoujunjun.messages</string>
+    <string name="package_name">org.fossify.messages.zhoujunjun</string>
     <string name="app_name">Fossify Messages</string>
 
     <string name="mms_file_size_limit_100kb">100KB</string>

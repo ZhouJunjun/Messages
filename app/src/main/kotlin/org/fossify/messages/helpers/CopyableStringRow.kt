@@ -77,8 +77,11 @@ fun TextView.setupCopyableStrings(
 }
 
 /**
- * Appends " ▏ " where the middle glyph is replaced by a 0.5dp wide, full-line-height bar in
+ * Appends "  ▏  " where the middle glyph is replaced by a 0.5dp wide, full-line-height bar in
  * [color] - the exact same colour and thickness as the horizontal divider above the row.
+ *
+ * [SIDE_SPACES] spaces are used on each side of the bar, so the horizontal spacing around every
+ * copyable-string "button" is double the original single space (1.0.5 spec).
  */
 private fun appendDividerBar(
     builder: SpannableStringBuilder,
@@ -86,7 +89,7 @@ private fun appendDividerBar(
     widthPx: Int,
     heightPx: Int,
 ) {
-    builder.append(' ')
+    builder.append(SIDE_SPACES_TEXT)
 
     val start = builder.length
     builder.append('\u200B')
@@ -99,8 +102,14 @@ private fun appendDividerBar(
         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
     )
 
-    builder.append(' ')
+    builder.append(SIDE_SPACES_TEXT)
 }
+
+/**
+ * Spaces kept on each side of the in-row separator bar. The 1.0.5 spec doubles the horizontal
+ * spacing of the copyable-string buttons, i.e. two spaces instead of the original one.
+ */
+private const val SIDE_SPACES_TEXT = "  "
 
 /** Solid vertical bar used as the in-row separator. */
 private class VerticalBarDrawable(

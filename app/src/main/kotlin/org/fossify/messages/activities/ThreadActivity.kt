@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
 import android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
 import android.content.res.ColorStateList
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -300,7 +301,11 @@ class ThreadActivity : SimpleActivity() {
         // the conversation page sits slightly darker than the message bubbles, per the design
         binding.threadHolder.setBackgroundColor(getColor(R.color.thread_page_background))
 
-        val bottomBarColor = getBottomBarColor()
+        // The bottom bar shares the toolbar's background colour (1.0.5 spec). Reading the colour
+        // off the toolbar itself keeps the two in sync even when the theme re-maps
+        // @color/color_primary, which the layout applies to the toolbar.
+        val bottomBarColor = (binding.threadToolbar.background as? ColorDrawable)?.color
+            ?: getBottomBarColor()
         binding.messageHolder.root.setBackgroundColor(bottomBarColor)
         binding.shortCodeHolder.root.setBackgroundColor(bottomBarColor)
     }
@@ -563,7 +568,12 @@ class ThreadActivity : SimpleActivity() {
 
             binding.threadMessagesList.adapter = currAdapter
         }
-        return (currAdapter as ThreadAdapter).apply { simIdMap = this@ThreadActivity.simIdMap }
+        return (currAdapter as ThreadAdapter).apply {
+            simIdMap = this@ThreadActivity.simIdMap
+            // A one-to-one thread's messages are all from the same number as the toolbar title, so
+            // the metadata lines can drop it (1.0.5 spec).
+            hideSenderNumber = participants.size <= 1
+        }
     }
 
     private fun setupAdapter() {
@@ -827,10 +837,8 @@ class ThreadActivity : SimpleActivity() {
         val textColor = getProperTextColor()
 
         binding.messageHolder.apply {
-            threadSendMessage.setTextColor(textColor)
-            threadSendMessage.compoundDrawables.forEach {
-                it?.applyColorFilter(textColor)
-            }
+            // thread_send_message is an ImageView, so tint the drawable directly (no text).
+            threadSendMessage.drawable?.applyColorFilter(textColor)
 
             confirmManageContacts.applyColorFilter(textColor)
             threadAddAttachment.applyColorFilter(textColor)
@@ -1926,9 +1934,7 @@ class ThreadActivity : SimpleActivity() {
         }
         ResourcesCompat.getDrawable(resources, drawableResId, theme)?.apply {
             applyColorFilter(getProperTextColor())
-            binding.messageHolder.threadSendMessage.setCompoundDrawablesWithIntrinsicBounds(
-                null, this, null, null
-            )
+            binding.messageHolder.threadSendMessage.setImageDrawable(this)
         }
     }
 

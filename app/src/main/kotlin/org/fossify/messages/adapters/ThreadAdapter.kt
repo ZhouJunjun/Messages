@@ -110,6 +110,13 @@ class ThreadAdapter(
      */
     var sentStatus: Map<Long, Boolean> = emptyMap()
 
+    /**
+     * True when every message of the thread comes from the same counterpart as the toolbar title
+     * (a one-to-one conversation). The sender number is then redundant on every metadata line and
+     * is left out (1.0.5 spec). Group conversations keep it, since senders differ.
+     */
+    var hideSenderNumber: Boolean = false
+
     @SuppressLint("MissingPermission")
     private val hasMultipleSIMCards = (activity.subscriptionManagerCompat().activeSubscriptionInfoList?.size ?: 0) > 1
     private val maxChatBubbleWidth = (activity.usableScreenSize.x * 0.8f).toInt()
@@ -118,7 +125,7 @@ class ThreadAdapter(
         private const val MAX_MEDIA_HEIGHT_RATIO = 3
 
         /** Gap between the SIM label, the sender number and the timestamp in the metadata line. */
-        private const val METADATA_PART_GAP_DP = 30
+        private const val METADATA_PART_GAP_DP = 20
     }
 
     init {
@@ -410,8 +417,8 @@ class ThreadAdapter(
 
             // copyable-string row: only for received messages, per the agreed design
             val copyables = if (received) extractCopyableStrings(message.body) else emptyList()
-            // Dividers follow the snippet colour at 80% alpha (1.0.4 spec).
-            val dividerColor = config.threadSnippetTextColor.adjustAlpha(0.8f)
+            // Dividers use the same colour as the toolbar's bottom border (1.0.5 spec).
+            val dividerColor = activity.getColor(org.fossify.commons.R.color.divider_grey)
             threadMessageCopyablesDivider.apply {
                 beVisibleIf(copyables.isNotEmpty())
                 setBackgroundColor(dividerColor)
@@ -448,8 +455,9 @@ class ThreadAdapter(
 
     /**
      * First line of every message: an optional SIM label (only with multiple SIMs), the sender
-     * number (received messages only) and the timestamp, separated by 30dp gaps (1.0.4 spec).
-     * The "sent" check mark is appended to this line as a compound drawable.
+     * number (received messages of a group conversation only) and the timestamp, separated by
+     * [METADATA_PART_GAP_DP] gaps (1.0.4 / 1.0.5 spec). The "sent" check mark is appended to this
+     * line as a compound drawable.
      */
     private fun buildMetadataText(message: Message): CharSequence {
         val builder = SpannableStringBuilder()
@@ -472,7 +480,7 @@ class ThreadAdapter(
         if (hasMultipleSIMCards) {
             appendPart("[${simIdMap[message.subscriptionId] ?: "?"}]")
         }
-        if (message.isReceivedMessage() && message.senderPhoneNumber.isNotEmpty()) {
+        if (message.isReceivedMessage() && message.senderPhoneNumber.isNotEmpty() && !hideSenderNumber) {
             appendPart(message.senderPhoneNumber)
         }
         appendPart(formatTimestamp(message.millis()))

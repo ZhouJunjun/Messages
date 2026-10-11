@@ -19,6 +19,13 @@
             app:menu="@menu/menu_thread"
             app:titleTextAppearance="@style/AppTheme.ActionBar.TitleTextStyle" />
 
+        <!--
+          The toolbar's bottom border lives inside the app bar. It used to be the first child of
+          the scrolling holder below, where the message list (clipToPadding=false) was drawn on
+          top of it, so a bubble covered it as soon as the list was scrolled (1.0.5 spec).
+        -->
+        <include layout="@layout/divider" />
+
     </org.fossify.commons.views.MyAppBarLayout>
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -28,10 +35,6 @@
         android:fillViewport="true"
         android:scrollbars="none"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-        <include
-            layout="@layout/divider"
-            app:layout_constraintTop_toTopOf="parent" />
 
         <RelativeLayout
             android:id="@+id/thread_add_contacts"
