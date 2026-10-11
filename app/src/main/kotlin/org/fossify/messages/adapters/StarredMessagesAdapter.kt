@@ -11,6 +11,7 @@ import org.fossify.commons.extensions.adjustAlpha
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
+import org.fossify.commons.extensions.highlightTextPart
 import org.fossify.commons.extensions.setupViewBackground
 import org.fossify.commons.views.MyRecyclerView
 import org.fossify.messages.R
@@ -44,6 +45,19 @@ class StarredMessagesAdapter(
     diffUtil = StarredMessageDiffCallback(),
     itemClick = itemClick
 ) {
+    /**
+     * Term highlighted inside the title / body while a search is active. Setting it rebinds the
+     * visible rows so an unchanged match set still picks up the new highlight (1.0.7 spec).
+     */
+    var highlightText: String = ""
+        set(value) {
+            if (field != value) {
+                field = value
+                @Suppress("NotifyDataSetChanged")
+                notifyDataSetChanged()
+            }
+        }
+
     override fun getActionMenuId() = 0
 
     override fun prepareActionMode(menu: Menu) {}
@@ -77,14 +91,24 @@ class StarredMessagesAdapter(
                 val sender = message.senderName.ifEmpty { message.senderPhoneNumber }
                 val serviceName = extractServiceName(message.body)
 
+                // Same precedence as the conversation lists: contact name, then the `【签名】`,
+                // then the raw number, so all three tabs name a sender identically (1.0.7 spec).
+                val displayName = sender.takeIf { AvatarColors.isRealName(it) }
+                    ?: serviceName
+                    ?: sender
+
+                val highlight = highlightText
+                val highlightColor = config.highlightColor
+
                 starredTitle.apply {
-                    text = serviceName ?: sender
+                    text = if (highlight.isEmpty()) displayName else displayName.highlightTextPart(highlight, highlightColor)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeTitleTextSize.toFloat())
                     setTextColor(config.homeTitleTextColor)
                 }
 
                 starredBody.apply {
-                    text = sanitizeForDisplay(message.body)
+                    val bodyText = sanitizeForDisplay(message.body)
+                    text = if (highlight.isEmpty()) bodyText else bodyText.highlightTextPart(highlight, highlightColor)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeSnippetTextSize.toFloat())
                     setTextColor(config.homeSnippetTextColor)
                 }
@@ -95,7 +119,7 @@ class StarredMessagesAdapter(
                     setTextColor(config.homeInfoTextColor)
                 }
 
-                val avatarName = serviceName ?: sender.takeIf { AvatarColors.isRealName(it) }
+                val avatarName = displayName.takeIf { AvatarColors.isRealName(it) }
                 if (avatarName != null) {
                     starredAvatarImage.beGone()
                     starredAvatarText.apply {

@@ -15,9 +15,15 @@
             <solid android:color="@color/avatar_default_background" />
         </shape>
     </item>
+    <!--
+      38dp, not 18dp: the glyph of ic_person_vector only fills 16 of its 24 viewport units, so a
+      38dp box paints a ~25dp figure - the height of two 13sp avatar lines (the "4 characters"
+      state of the text avatars, 1.0.7 spec). Previously the person was visibly tiny next to the
+      coloured text avatars.
+    -->
     <item
-        android:width="18dp"
-        android:height="18dp"
+        android:width="38dp"
+        android:height="38dp"
         android:drawable="@drawable/ic_person_vector"
         android:gravity="center" />
 </layer-list>

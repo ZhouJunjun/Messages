@@ -6,15 +6,24 @@ import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.provider.Telephony
-import android.text.TextUtils
+import android.util.TypedValue
+import android.view.GestureDetector
+import android.view.Gravity
+import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.appcompat.widget.PopupMenu
+import kotlin.math.abs
 import org.fossify.commons.dialogs.PermissionRequiredDialog
 import org.fossify.commons.extensions.adjustAlpha
 import org.fossify.commons.extensions.appLaunched
@@ -27,8 +36,6 @@ import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.checkWhatsNew
 import org.fossify.commons.extensions.convertToBitmap
-import org.fossify.commons.extensions.fadeIn
-import org.fossify.commons.extensions.formatDateOrTime
 import org.fossify.commons.extensions.getMyContactsCursor
 import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperPrimaryColor
@@ -47,7 +54,6 @@ import org.fossify.commons.helpers.MyContactsContentProvider
 import org.fossify.commons.helpers.PERMISSION_READ_CONTACTS
 import org.fossify.commons.helpers.PERMISSION_READ_SMS
 import org.fossify.commons.helpers.PERMISSION_SEND_SMS
-import org.fossify.commons.helpers.SHORT_ANIMATION_DURATION
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.models.FAQItem
@@ -55,7 +61,6 @@ import org.fossify.commons.models.Release
 import org.fossify.messages.BuildConfig
 import org.fossify.messages.R
 import org.fossify.messages.adapters.ConversationsAdapter
-import org.fossify.messages.adapters.SearchResultsAdapter
 import org.fossify.messages.adapters.StarredMessagesAdapter
 import org.fossify.messages.databinding.ActivityMainBinding
 import org.fossify.messages.extensions.clearAllMessagesIfNeeded
@@ -74,7 +79,6 @@ import org.fossify.messages.helpers.THREAD_TITLE
 import org.fossify.messages.models.Conversation
 import org.fossify.messages.models.Events
 import org.fossify.messages.models.Message
-import org.fossify.messages.models.SearchResult
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
@@ -82,6 +86,12 @@ import org.greenrobot.eventbus.ThreadMode
 private const val TAB_CONVERSATIONS = 0
 private const val TAB_SERVICES = 1
 private const val TAB_STARRED = 2
+
+/** Minimum horizontal travel for a fling to count as "switch tab" rather than a scroll. */
+private const val SWIPE_MIN_DISTANCE_DP = 72f
+
+/** Search box / hint text; commons' `big_text_size` (18sp) minus 2 (1.0.7 spec). */
+private const val SEARCH_TEXT_SIZE_SP = 16f
 
 class MainActivity : SimpleActivity() {
     override var isSearchBarEnabled = true
@@ -96,9 +106,50 @@ class MainActivity : SimpleActivity() {
     private var currentTab = TAB_CONVERSATIONS
     private var allConversationsForTabs = ArrayList<Conversation>()
 
+    /**
+     * Search state. Matching conversations are shown in the *same* list as the tabs (1.0.7 spec)
+     * so a result row looks exactly like a normal row and the tab strip keeps filtering it.
+     * [searchThreadIds]/[searchBodies] come from the telephony provider and let a thread match on
+     * a message other than its newest one, in which case that message becomes the shown snippet.
+     */
+    private var searchActive = false
+    private var searchThreadIds: Set<Long> = emptySet()
+    private var searchBodies: Map<Long, String> = emptyMap()
+    private var searchMessageIds: Map<Long, Long> = emptyMap()
+
     private var tabConversationsView: TextView? = null
     private var tabServicesView: TextView? = null
     private var tabStarredView: TextView? = null
+    private var tabRowMenuView: ImageView? = null
+
+    /** Horizontal-swipe support for switching between the three tabs (1.0.7 spec). */
+    private val swipeDetector by lazy {
+        GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 == null) {
+                    return false
+                }
+
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                val minDistance = SWIPE_MIN_DISTANCE_DP * resources.displayMetrics.density
+                if (abs(dx) < minDistance || abs(dx) < abs(dy) * 1.5f) {
+                    return false
+                }
+
+                switchTabRelative(if (dx < 0) 1 else -1)
+                return true
+            }
+        })
+    }
+
+    private val swipeTouchListener = View.OnTouchListener { _, event ->
+        // feed the detector but never consume: vertical scrolling must keep working untouched
+        swipeDetector.onTouchEvent(event)
+        false
+    }
 
     private val binding by viewBinding(ActivityMainBinding::inflate)
 
@@ -108,6 +159,8 @@ class MainActivity : SimpleActivity() {
         setContentView(binding.root)
         appLaunched(BuildConfig.APPLICATION_ID)
         setupOptionsMenu()
+        setupSearchBox()
+        setupTabSwiping()
 
         setupEdgeToEdge(padBottomImeAndSystem = listOf(binding.conversationsList))
 
@@ -167,33 +220,123 @@ class MainActivity : SimpleActivity() {
         }
     }
 
+    /**
+     * Left/right fling on either list switches tab. The listener never consumes the event, so
+     * vertical scrolling and the search-mode list behave exactly as before; it also covers the
+     * search results because they are rendered by the very same list (1.0.7 spec).
+     */
+    private fun setupTabSwiping() {
+        binding.conversationsList.setOnTouchListener(swipeTouchListener)
+        binding.starredList.setOnTouchListener(swipeTouchListener)
+    }
+
     private fun setupOptionsMenu() {
         binding.mainMenu.requireToolbar().inflateMenu(R.menu.menu_main)
         binding.mainMenu.toggleHideOnScroll(true)
         binding.mainMenu.setupMenu()
 
         binding.mainMenu.onSearchClosedListener = {
-            fadeOutSearch()
+            endSearch()
         }
 
         binding.mainMenu.onSearchTextChangedListener = { text ->
-            if (text.isNotEmpty()) {
-                if (binding.searchHolder.alpha < 1f) {
-                    binding.searchHolder.fadeIn()
-                }
-            } else {
-                fadeOutSearch()
-            }
             searchTextChanged(text)
         }
 
         binding.mainMenu.requireToolbar().setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.settings -> launchSettings()
-                R.id.about -> launchAbout()
-                else -> return@setOnMenuItemClickListener false
+            handleMenuItemClick(menuItem)
+        }
+    }
+
+    private fun handleMenuItemClick(menuItem: MenuItem): Boolean {
+        when (menuItem.itemId) {
+            R.id.settings -> launchSettings()
+            R.id.about -> launchAbout()
+            else -> return false
+        }
+        return true
+    }
+
+    /**
+     * The search box is commons' `menu_search.xml`, which cannot be edited from here, so its 1.0.7
+     * look is applied at runtime: the decorative magnifier / back-arrow on the left is dropped
+     * (focusing the field opens the search, the system back key closes it), the Settings / About
+     * menu moves to the end of the tab row and a clear button is added on the right.
+     */
+    private fun setupSearchBox() {
+        val search = binding.mainMenu.binding
+
+        search.topToolbarSearchIcon.visibility = View.GONE
+        search.topToolbar.visibility = View.GONE
+
+        val clearButton = ImageView(this).apply {
+            id = R.id.search_clear_button
+            setImageResource(org.fossify.commons.R.drawable.ic_cross_vector)
+            contentDescription = getString(org.fossify.commons.R.string.close)
+            scaleType = ImageView.ScaleType.CENTER
+            val padding = resources.getDimensionPixelSize(org.fossify.commons.R.dimen.medium_margin)
+            setPadding(padding, padding, padding, padding)
+            background = borderlessSelectableBackground()
+            setOnClickListener {
+                // an empty query cannot be cleared, so it closes the search instead
+                if (search.topToolbarSearch.text.isNullOrEmpty()) {
+                    binding.mainMenu.closeSearch()
+                } else {
+                    search.topToolbarSearch.setText("")
+                }
             }
-            return@setOnMenuItemClickListener true
+        }
+        search.toolbarContainer.addView(
+            clearButton,
+            RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.WRAP_CONTENT,
+                RelativeLayout.LayoutParams.MATCH_PARENT
+            ).apply { addRule(RelativeLayout.ALIGN_PARENT_END) }
+        )
+
+        // the field no longer sits next to the (hidden) icon, and must stop before the clear button
+        (search.topToolbarSearch.layoutParams as RelativeLayout.LayoutParams).apply {
+            removeRule(RelativeLayout.END_OF)
+            removeRule(RelativeLayout.START_OF)
+            addRule(RelativeLayout.START_OF, R.id.search_clear_button)
+            marginStart = 0
+            marginEnd = 0
+        }
+        val textInset = resources.getDimensionPixelSize(org.fossify.commons.R.dimen.activity_margin)
+        search.topToolbarSearch.setPadding(
+            textInset,
+            search.topToolbarSearch.paddingTop,
+            0,
+            search.topToolbarSearch.paddingBottom
+        )
+
+        applySearchBoxColors()
+    }
+
+    /**
+     * Re-applied after MySearchMenu.updateColors(): that call unconditionally tints the library's
+     * own search-box background with colorPrimary@25%, so the 1.0.7 background (rounded square,
+     * conversation-page body colour) has to be re-declared every time.
+     */
+    private fun applySearchBoxColors() {
+        val search = binding.mainMenu.binding
+        search.toolbarContainer.setBackgroundResource(R.drawable.search_box_background)
+        search.topToolbarSearch.apply {
+            // a CJK single line sits visually low with the default font padding
+            includeFontPadding = false
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, SEARCH_TEXT_SIZE_SP)
+        }
+        search.toolbarContainer.findViewById<ImageView>(R.id.search_clear_button)
+            ?.applyColorFilter(getProperTextColor())
+    }
+
+    private fun borderlessSelectableBackground(): Drawable? {
+        val value = TypedValue()
+        return if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, value, true)) {
+            AppCompatResources.getDrawable(this, value.resourceId)
+        } else {
+            null
         }
     }
 
@@ -250,6 +393,7 @@ class MainActivity : SimpleActivity() {
 
     private fun updateMenuColors() {
         binding.mainMenu.updateColors()
+        applySearchBoxColors()
     }
 
     private fun loadMessages() {
@@ -445,12 +589,24 @@ class MainActivity : SimpleActivity() {
         cached: Boolean = false,
     ) {
         allConversationsForTabs = conversations
+        refreshConversationList(cached)
+    }
 
+    /**
+     * Renders the list for the current tab, using the search matches as the source while a search
+     * is active. Every path that used to call `setupConversations` now ends up here, so switching
+     * tabs (by tap or by swipe) keeps the active search applied - a result list for the
+     * "notifications" tab is never silently replaced by the full one (1.0.7 spec).
+     */
+    private fun refreshConversationList(cached: Boolean = false) {
         if (currentTab == TAB_STARRED) {
+            // the starred tab has its own adapter, but it answers the same query (1.0.7 spec)
+            loadStarredMessages()
             return
         }
 
-        val filteredConversations = filterConversationsForTab(conversations)
+        val source = if (searchActive) computeSearchMatches() else allConversationsForTabs
+        val filteredConversations = filterConversationsForTab(source)
         val sortedConversations = filteredConversations
             .sortedWith(
                 compareByDescending<Conversation> {
@@ -461,14 +617,16 @@ class MainActivity : SimpleActivity() {
         if (cached && config.appRunCount == 1) {
             // there are no cached conversations on the first run so we show the
             // loading placeholder and progress until we are done loading from telephony
-            showOrHideProgress(conversations.isEmpty())
+            showOrHideProgress(source.isEmpty())
         } else {
             showOrHideProgress(false)
             showOrHidePlaceholder(filteredConversations.isEmpty())
         }
+        updateSearchHolder(filteredConversations.isEmpty())
 
         try {
             getOrCreateConversationsAdapter().apply {
+                highlightText = if (searchActive) lastSearchedText else ""
                 updateConversations(sortedConversations) {
                     if (!cached) {
                         showOrHidePlaceholder(currentList.isEmpty())
@@ -477,6 +635,35 @@ class MainActivity : SimpleActivity() {
             }
         } catch (_: Exception) {
         }
+    }
+
+    /**
+     * Conversations matching the active search: title / number / shown snippet, plus any thread
+     * that has at least one message containing the term. For the latter the matching message
+     * body is promoted to the shown snippet, otherwise the hit would be invisible.
+     */
+    private fun computeSearchMatches(): ArrayList<Conversation> {
+        val text = lastSearchedText
+        val matches = ArrayList<Conversation>()
+        if (text.isEmpty()) {
+            return matches
+        }
+
+        allConversationsForTabs.forEach { conversation ->
+            val titleHit = conversation.title.contains(text, ignoreCase = true) ||
+                conversation.phoneNumber.contains(text, ignoreCase = true)
+            val snippetHit = conversation.snippet.contains(text, ignoreCase = true)
+            val bodyHit = searchThreadIds.contains(conversation.threadId)
+            if (titleHit || snippetHit || bodyHit) {
+                val snippet = if (!snippetHit && bodyHit) {
+                    searchBodies[conversation.threadId] ?: conversation.snippet
+                } else {
+                    conversation.snippet
+                }
+                matches.add(if (snippet != conversation.snippet) conversation.copy(snippet = snippet) else conversation)
+            }
+        }
+        return matches
     }
 
     private fun filterConversationsForTab(
@@ -508,20 +695,30 @@ class MainActivity : SimpleActivity() {
         tabConversationsView = tabs.findViewById(R.id.tab_conversations)
         tabServicesView = tabs.findViewById(R.id.tab_services)
         tabStarredView = tabs.findViewById(R.id.tab_starred)
+        tabRowMenuView = tabs.findViewById(R.id.tab_row_menu)
 
         tabConversationsView?.setOnClickListener { switchTab(TAB_CONVERSATIONS) }
         tabServicesView?.setOnClickListener { switchTab(TAB_SERVICES) }
         tabStarredView?.setOnClickListener { switchTab(TAB_STARRED) }
+        // Settings / About moved out of the search box to the end of this row (1.0.7 spec)
+        tabRowMenuView?.setOnClickListener { anchor ->
+            PopupMenu(this, anchor).apply {
+                menuInflater.inflate(R.menu.menu_main, menu)
+                setOnMenuItemClickListener { handleMenuItemClick(it) }
+                show()
+            }
+        }
         updateTabColors()
     }
 
-    /** The selected tab uses the same color as the copyable strings, the rest follow the theme. */
+    /** The selected tab uses the accent colour, the rest follow the theme (1.0.7 spec). */
     private fun updateTabColors() {
-        val selectedColor = config.copyableTextColor
+        val selectedColor = config.highlightColor
         val normalColor = getProperTextColor()
         tabConversationsView?.setTextColor(if (currentTab == TAB_CONVERSATIONS) selectedColor else normalColor)
         tabServicesView?.setTextColor(if (currentTab == TAB_SERVICES) selectedColor else normalColor)
         tabStarredView?.setTextColor(if (currentTab == TAB_STARRED) selectedColor else normalColor)
+        tabRowMenuView?.applyColorFilter(normalColor)
     }
 
     private fun switchTab(tab: Int) {
@@ -547,7 +744,15 @@ class MainActivity : SimpleActivity() {
         if (isStarredTab) {
             loadStarredMessages()
         } else {
-            setupConversations(allConversationsForTabs)
+            refreshConversationList()
+        }
+    }
+
+    /** Moves one tab left/right; swipe gestures use this (1.0.7 spec). */
+    private fun switchTabRelative(delta: Int) {
+        val next = currentTab + delta
+        if (next in TAB_CONVERSATIONS..TAB_STARRED) {
+            switchTab(next)
         }
     }
 
@@ -559,11 +764,23 @@ class MainActivity : SimpleActivity() {
                 emptyList<Message>()
             }
 
+            // a search narrows the starred tab too, so all three tabs answer the same query
+            val searchedText = if (searchActive) lastSearchedText else ""
+            val filtered = if (searchedText.isEmpty()) {
+                messages
+            } else {
+                messages.filter {
+                    it.body.contains(searchedText, ignoreCase = true) ||
+                        it.senderName.contains(searchedText, ignoreCase = true) ||
+                        it.senderPhoneNumber.contains(searchedText, ignoreCase = true)
+                }
+            }
+
             runOnUiThread {
-                val isEmpty = messages.isEmpty()
+                val isEmpty = filtered.isEmpty()
                 binding.starredList.beVisibleIf(!isEmpty)
                 binding.noStarredPlaceholder.beVisibleIf(isEmpty)
-                getOrCreateStarredAdapter().submitList(messages)
+                getOrCreateStarredAdapter().apply { highlightText = searchedText }.submitList(filtered)
             }
         }
     }
@@ -602,20 +819,38 @@ class MainActivity : SimpleActivity() {
     }
 
     private fun showOrHidePlaceholder(show: Boolean) {
-        binding.conversationsFastscroller.beGoneIf(show)
-        binding.noConversationsPlaceholder.beVisibleIf(show)
+        // while a search is active the "no results" hint comes from the search holder instead
+        val visible = show && !searchActive
+        binding.conversationsFastscroller.beGoneIf(visible)
+        binding.noConversationsPlaceholder.beVisibleIf(visible)
         binding.noConversationsPlaceholder.text = getString(R.string.no_conversations_found)
-        binding.noConversationsPlaceholder2.beVisibleIf(show)
+        binding.noConversationsPlaceholder2.beVisibleIf(visible)
     }
 
-    private fun fadeOutSearch() {
-        binding.searchHolder.animate()
-            .alpha(0f)
-            .setDuration(SHORT_ANIMATION_DURATION)
-            .withEndAction {
-                binding.searchHolder.beGone()
-                searchTextChanged("", true)
-            }.start()
+    /**
+     * Shows the search hint overlay ("type 2 characters" while the query is too short, "no items
+     * found" when nothing matched) and hides it as soon as there are results to look at - the
+     * results themselves are rendered by the normal conversation list (1.0.7 spec).
+     */
+    private fun updateSearchHolder(noResults: Boolean) {
+        val tooShort = lastSearchedText.length < 2
+        val showHolder = binding.mainMenu.isSearchOpen && (tooShort || noResults)
+        binding.searchPlaceholder.beVisibleIf(showHolder && !tooShort)
+        binding.searchPlaceholder2.beVisibleIf(showHolder && tooShort)
+        binding.searchHolder.alpha = 1f
+        binding.searchHolder.beVisibleIf(showHolder)
+    }
+
+    private fun endSearch() {
+        searchActive = false
+        lastSearchedText = ""
+        searchThreadIds = emptySet()
+        searchBodies = emptyMap()
+        searchMessageIds = emptyMap()
+        binding.searchHolder.beGone()
+        binding.searchPlaceholder.beGone()
+        binding.searchPlaceholder2.beGone()
+        refreshConversationList()
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -628,6 +863,8 @@ class MainActivity : SimpleActivity() {
             val conversation = any as Conversation
             putExtra(THREAD_ID, conversation.threadId)
             putExtra(THREAD_TITLE, conversation.title)
+            // a search hit may sit on an older message than the shown snippet - jump right to it
+            putExtra(SEARCHED_MESSAGE_ID, searchMessageIds[conversation.threadId] ?: -1L)
             startActivity(this)
         }
     }
@@ -677,101 +914,54 @@ class MainActivity : SimpleActivity() {
             .build()
     }
 
-    private fun searchTextChanged(text: String, forceUpdate: Boolean = false) {
-        if (!binding.mainMenu.isSearchOpen && !forceUpdate) {
+    /**
+     * Runs the query and re-renders the normal list. Results are no longer a separate list of
+     * mixed "conversation" / "message" rows: every hit becomes a row of the current tab, drawn by
+     * the conversation adapter, so the tabs keep working and the match is highlighted in place
+     * (1.0.7 spec).
+     */
+    private fun searchTextChanged(text: String) {
+        if (!binding.mainMenu.isSearchOpen) {
             return
         }
 
         lastSearchedText = text
-        binding.searchPlaceholder2.beGoneIf(text.length >= 2)
-        if (text.length >= 2) {
-            ensureBackgroundThread {
-                // conversations are matched in memory (title / number / latest message), the
-                // messages come straight from the telephony provider so the search works even
-                // when the local cache has not been populated yet
-                val conversations = allConversationsForTabs.filter { conversation ->
-                    conversation.title.contains(text, ignoreCase = true) ||
-                        conversation.phoneNumber.contains(text, ignoreCase = true) ||
-                        conversation.snippet.contains(text, ignoreCase = true)
-                }
-                val messages = searchMessages(text)
-                if (text == lastSearchedText) {
-                    showSearchResults(messages, conversations, text)
-                }
-            }
-        } else {
-            binding.searchPlaceholder.beVisible()
-            binding.searchResultsList.beGone()
-        }
-    }
-
-    private fun showSearchResults(
-        messages: List<Message>,
-        conversations: List<Conversation>,
-        searchedText: String,
-    ) {
-        val searchResults = ArrayList<SearchResult>()
-        conversations.forEach { conversation ->
-            val date = (conversation.date * 1000L).formatDateOrTime(
-                context = this,
-                hideTimeOnOtherDays = true,
-                showCurrentYear = true
-            )
-
-            val searchResult = SearchResult(
-                messageId = -1,
-                title = conversation.title,
-                snippet = conversation.phoneNumber,
-                date = date,
-                threadId = conversation.threadId,
-                photoUri = conversation.photoUri
-            )
-            searchResults.add(searchResult)
+        if (text.length < 2) {
+            searchActive = false
+            searchThreadIds = emptySet()
+            searchBodies = emptyMap()
+            searchMessageIds = emptyMap()
+            refreshConversationList()
+            return
         }
 
-        messages.sortedByDescending { it.id }.forEach { message ->
-            var recipient = message.senderName
-            if (recipient.isEmpty() && message.participants.isNotEmpty()) {
-                val participantNames = message.participants.map { it.name }
-                recipient = TextUtils.join(", ", participantNames)
+        searchActive = true
+        ensureBackgroundThread {
+            // the messages come straight from the telephony provider, so a thread matches even
+            // when the term only appears in a message older than the one shown in the list
+            val messages: List<Message> = try {
+                searchMessages(text)
+            } catch (_: Exception) {
+                emptyList()
             }
 
-            val date = (message.date * 1000L).formatDateOrTime(
-                context = this,
-                hideTimeOnOtherDays = true,
-                showCurrentYear = true
-            )
-
-            val searchResult = SearchResult(
-                messageId = message.id,
-                title = recipient,
-                snippet = message.body,
-                date = date,
-                threadId = message.threadId,
-                photoUri = message.senderPhotoUri
-            )
-            searchResults.add(searchResult)
-        }
-
-        runOnUiThread {
-            binding.searchResultsList.beVisibleIf(searchResults.isNotEmpty())
-            binding.searchPlaceholder.beVisibleIf(searchResults.isEmpty())
-
-            val currAdapter = binding.searchResultsList.adapter
-            if (currAdapter == null) {
-                SearchResultsAdapter(this, searchResults, binding.searchResultsList, searchedText) {
-                    hideKeyboard()
-                    Intent(this, ThreadActivity::class.java).apply {
-                        putExtra(THREAD_ID, (it as SearchResult).threadId)
-                        putExtra(THREAD_TITLE, it.title)
-                        putExtra(SEARCHED_MESSAGE_ID, it.messageId)
-                        startActivity(this)
-                    }
-                }.apply {
-                    binding.searchResultsList.adapter = this
+            val threadIds = HashSet<Long>()
+            val bodies = LinkedHashMap<Long, String>()
+            val messageIds = LinkedHashMap<Long, Long>()
+            // newest first, so the first hit per thread is the one we keep
+            messages.sortedByDescending { it.id }.forEach { message ->
+                threadIds.add(message.threadId)
+                messageIds.putIfAbsent(message.threadId, message.id)
+                if (message.body.isNotEmpty()) {
+                    bodies.putIfAbsent(message.threadId, message.body)
                 }
-            } else {
-                (currAdapter as SearchResultsAdapter).updateItems(searchResults, searchedText)
+            }
+
+            if (text == lastSearchedText) {
+                searchThreadIds = threadIds
+                searchBodies = bodies
+                searchMessageIds = messageIds
+                runOnUiThread { refreshConversationList() }
             }
         }
     }

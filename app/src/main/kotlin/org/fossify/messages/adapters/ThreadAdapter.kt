@@ -8,11 +8,11 @@ import android.graphics.drawable.Drawable
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.RelativeLayout
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.updateLayoutParams
@@ -74,6 +74,7 @@ import org.fossify.messages.extensions.subscriptionManagerCompat
 import org.fossify.messages.extensions.unstarMessage
 import org.fossify.messages.helpers.EXTRA_VCARD_URI
 import org.fossify.messages.helpers.GapSpan
+import org.fossify.messages.helpers.SimBadgeSpan
 import org.fossify.messages.helpers.THREAD_RECEIVED_MESSAGE
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_ERROR
@@ -379,15 +380,15 @@ class ThreadAdapter(
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.threadInfoTextSize.toFloat())
                 setTextColor(config.threadInfoTextColor)
 
-                // sent messages carry the "sent" check mark at the end of the first line,
-                // tinted with the copyable-string colour (1.0.4 spec)
+                // sent messages carry the "sent" (single tick) / "delivered" (double tick) mark at
+                // the end of the first line, tinted with the accent colour (1.0.7 spec)
                 val delivered = if (received) null else sentStatus[message.id]
                 val checkDrawable = delivered?.let {
                     AppCompatResources.getDrawable(
                         activity,
                         if (it) R.drawable.ic_check_double_vector else org.fossify.commons.R.drawable.ic_check_vector
                     )?.mutate()?.apply {
-                        applyColorFilter(config.copyableTextColor)
+                        applyColorFilter(config.highlightColor)
                         val size = lineHeight
                         setBounds(0, 0, size, size)
                     }
@@ -454,16 +455,20 @@ class ThreadAdapter(
     }
 
     /**
-     * First line of every message: an optional SIM label (only with multiple SIMs), the sender
+     * First line of every message: an optional SIM badge (only with multiple SIMs), the sender
      * number (received messages of a group conversation only) and the timestamp, separated by
      * [METADATA_PART_GAP_DP] gaps (1.0.4 / 1.0.5 spec). The "sent" check mark is appended to this
      * line as a compound drawable.
+     *
+     * The SIM marker used to be literal text of the form `[1]`; it is now a [SimBadgeSpan] drawn
+     * like the bottom bar's operator selector (1.0.7 spec).
      */
     private fun buildMetadataText(message: Message): CharSequence {
         val builder = SpannableStringBuilder()
         val gapPx = (METADATA_PART_GAP_DP * activity.resources.displayMetrics.density).roundToInt()
 
-        fun appendPart(part: String) {
+        /** Inserts the 30dp/20dp separator, unless nothing has been appended yet. */
+        fun appendGap() {
             if (builder.isNotEmpty()) {
                 val start = builder.length
                 builder.append('\u200B')
@@ -474,11 +479,38 @@ class ThreadAdapter(
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
+        }
+
+        fun appendPart(part: String) {
+            appendGap()
             builder.append(part)
         }
 
         if (hasMultipleSIMCards) {
-            appendPart("[${simIdMap[message.subscriptionId] ?: "?"}]")
+            appendGap()
+            val start = builder.length
+            builder.append('\u200B')
+
+            val config = activity.config
+            val simSize = (config.threadInfoTextSize * activity.resources.displayMetrics.scaledDensity).roundToInt()
+            val simIcon = AppCompatResources.getDrawable(activity, org.fossify.commons.R.drawable.ic_sim_vector)?.mutate()
+            val simLabel = simIdMap[message.subscriptionId] ?: "?"
+            if (simIcon != null) {
+                builder.setSpan(
+                    SimBadgeSpan(
+                        icon = simIcon,
+                        label = simLabel,
+                        iconColor = config.threadInfoTextColor,
+                        labelColor = config.threadInfoTextColor.getContrastColor(),
+                        sizePx = simSize,
+                    ),
+                    start,
+                    builder.length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            } else {
+                builder.append(simLabel)
+            }
         }
         if (message.isReceivedMessage() && message.senderPhoneNumber.isNotEmpty() && !hideSenderNumber) {
             appendPart(message.senderPhoneNumber)
@@ -491,9 +523,9 @@ class ThreadAdapter(
 
     private fun setupReceivedMessageView(messageBinding: ItemMessageBinding, message: Message) {
         messageBinding.apply {
-            alignStart(threadMessageMetadata)
-            alignStart(threadMessageAttachmentsHolder)
-            alignStart(threadMessageBubble)
+            // Everything (metadata, bubble, and now the attachments inside it) hangs off the
+            // wrapper's gravity instead of three separate RelativeLayout rules (1.0.7 spec).
+            threadMessageWrapper.gravity = Gravity.START
             applyBubbleMargins(threadMessageWrapper, startDp = 10, endDp = 40)
 
             // the bubble itself carries the background, so the copyable strings sit inside it
@@ -511,9 +543,7 @@ class ThreadAdapter(
 
     private fun setupSentMessageView(messageBinding: ItemMessageBinding, message: Message) {
         messageBinding.apply {
-            alignEnd(threadMessageMetadata)
-            alignEnd(threadMessageAttachmentsHolder)
-            alignEnd(threadMessageBubble)
+            threadMessageWrapper.gravity = Gravity.END
             applyBubbleMargins(threadMessageWrapper, startDp = 40, endDp = 10)
 
             val primaryColor = activity.getProperPrimaryColor()
@@ -565,26 +595,18 @@ class ThreadAdapter(
         }
     }
 
-    private fun alignStart(view: View) {
-        view.updateLayoutParams<RelativeLayout.LayoutParams> {
-            addRule(RelativeLayout.ALIGN_PARENT_START)
-            removeRule(RelativeLayout.ALIGN_PARENT_END)
-        }
-    }
-
-    private fun alignEnd(view: View) {
-        view.updateLayoutParams<RelativeLayout.LayoutParams> {
-            addRule(RelativeLayout.ALIGN_PARENT_END)
-            removeRule(RelativeLayout.ALIGN_PARENT_START)
-        }
-    }
-
     private fun setupImageView(holder: ViewHolder, binding: ItemMessageBinding, message: Message, attachment: Attachment) = binding.apply {
         val mimetype = attachment.mimetype
         val uri = attachment.getUri()
 
         val imageView = ItemAttachmentImageBinding.inflate(layoutInflater)
         threadMessageAttachmentsHolder.addView(imageView.root)
+
+        // The attachment now lives inside the bubble, and the bubble is sized by its widest
+        // child. Its width budget therefore has to exclude the bubble's own horizontal padding,
+        // otherwise a full-width image would push the bubble past the row and the right edge
+        // would get clipped (1.0.7 spec).
+        val attachmentMaxWidth = (maxChatBubbleWidth - 2 * threadMessageBubble.paddingStart).coerceAtLeast(0)
 
         val placeholderDrawable = Color.TRANSPARENT.toDrawable()
         val options = RequestOptions()
@@ -596,7 +618,7 @@ class ThreadAdapter(
             .load(uri)
             .apply(options)
             .dontAnimate()
-            .override(maxChatBubbleWidth, maxChatBubbleWidth * MAX_MEDIA_HEIGHT_RATIO)
+            .override(attachmentMaxWidth, attachmentMaxWidth * MAX_MEDIA_HEIGHT_RATIO)
             .downsample(DownsampleStrategy.AT_MOST)
             .listener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(e: GlideException?, model: Any?, target: Target<Drawable>, isFirstResource: Boolean): Boolean {
@@ -610,7 +632,7 @@ class ThreadAdapter(
             .into(imageView.attachmentImage)
 
         imageView.attachmentImage.updateLayoutParams<ViewGroup.LayoutParams> {
-            width = maxChatBubbleWidth
+            width = attachmentMaxWidth
             height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
 

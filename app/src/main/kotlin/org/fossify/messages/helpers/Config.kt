@@ -176,6 +176,13 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(LINK_TEXT_COLOR, 0xff4d99e0.toInt())
         set(value) = prefs.edit().putInt(LINK_TEXT_COLOR, value).apply()
 
+    // accent colour: the selected top tab and the search-result hit highlighting (1.0.7 spec).
+    // Its default is deliberately the copyable-string colour, so turning the accent on does not
+    // change the existing look.
+    var highlightColor: Int
+        get() = prefs.getInt(HIGHLIGHT_COLOR, DEFAULT_HIGHLIGHT_COLOR)
+        set(value) = prefs.edit().putInt(HIGHLIGHT_COLOR, value).apply()
+
     var customNotifications: Set<String>
         get() = prefs.getStringSet(CUSTOM_NOTIFICATIONS, HashSet<String>())!!
         set(customNotifications) = prefs.edit()

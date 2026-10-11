@@ -59,6 +59,14 @@ const val THREAD_INFO_TEXT_SIZE = "thread_info_text_size"
 const val THREAD_INFO_TEXT_COLOR = "thread_info_text_color"
 const val LINK_TEXT_COLOR = "link_text_color"
 
+/**
+ * Accent colour used by the top tab strip's selected tab and by the search-result highlights.
+ * Not a `const val`: `0xff4caf50.toInt()` is a function call, which Kotlin does not accept in a
+ * compile-time constant.
+ */
+val DEFAULT_HIGHLIGHT_COLOR = 0xff4caf50.toInt()
+const val HIGHLIGHT_COLOR = "highlight_color"
+
 private const val PATH = "org.fossify.org.fossify.messages.action."
 const val MARK_AS_READ = PATH + "mark_as_read"
 const val REPLY = PATH + "reply"

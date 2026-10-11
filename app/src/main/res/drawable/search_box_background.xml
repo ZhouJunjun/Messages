@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Rounded-square background of the search box (1.0.7 spec): the corner radius matches the
+  avatars (12dp) and the fill matches the conversation page body.
+  Applied from MainActivity.applySearchBoxColors *after* MySearchMenu.updateColors(), which
+  unconditionally tints the library drawable with colorPrimary@25%.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="12dp" />
+    <solid android:color="@color/thread_page_background" />
+</shape>

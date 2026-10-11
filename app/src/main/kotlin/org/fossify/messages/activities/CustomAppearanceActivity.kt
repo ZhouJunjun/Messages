@@ -90,6 +90,13 @@ class CustomAppearanceActivity : SimpleActivity() {
             null, null,
             { config.linkTextColor }, { config.linkTextColor = it }
         )
+        // the highlight color has no dedicated size either; it drives the selected top tab and
+        // the search-result hit highlighting (1.0.7 spec)
+        addSettingRow(
+            R.string.appearance_highlight_color,
+            null, null,
+            { config.highlightColor }, { config.highlightColor = it }
+        )
 
         updateTextColors(binding.customAppearanceScrollview)
     }

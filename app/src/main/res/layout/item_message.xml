@@ -1,63 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  One message row. Deliberately plain LinearLayouts only (1.0.7 spec):
+
+  * Attachments live INSIDE the bubble now. They used to be a sibling sitting above it, which
+    left an MMS picture floating outside its own bubble and - worse - made the bubble's height
+    come out short, so the last lines of a rich MMS were clipped away.
+  * The old RelativeLayout + ConstraintLayout chain measured every child with an `AT_MOST`
+    budget derived from the views above it; once the attachment grew the budget shrank and the
+    body was cut. Sequential wrap_content measuring has no such failure mode.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/thread_message_holder"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginTop="40dp"
-    android:foreground="@drawable/selector">
+    android:foreground="@drawable/selector"
+    android:orientation="vertical">
 
-    <RelativeLayout
+    <LinearLayout
         android:id="@+id/thread_message_wrapper"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        android:gravity="start"
+        android:orientation="vertical">
 
         <org.fossify.commons.views.MyTextView
             android:id="@+id/thread_message_metadata"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentTop="true"
             android:layout_marginBottom="@dimen/tiny_margin"
             android:drawablePadding="8dp"
             android:textSize="@dimen/smaller_text_size"
             tools:text="[1] 10086 26年1月2日 12:30" />
 
-        <LinearLayout
-            android:id="@+id/thread_message_attachments_holder"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_below="@id/thread_message_metadata"
-            android:divider="@drawable/linear_layout_vertical_divider"
-            android:orientation="vertical"
-            android:showDividers="middle" />
-
-        <ImageView
-            android:id="@+id/thread_message_play_outline"
-            android:layout_width="@dimen/play_outline_size"
-            android:layout_height="@dimen/play_outline_size"
-            android:layout_alignEnd="@id/thread_message_attachments_holder"
-            android:layout_alignBottom="@id/thread_message_attachments_holder"
-            android:layout_marginEnd="@dimen/medium_margin"
-            android:layout_marginBottom="@dimen/activity_margin"
-            android:src="@drawable/ic_play_outline_vector"
-            android:visibility="gone"
-            tools:ignore="ContentDescription" />
-
-        <!-- the bubble carries the background and holds both the body and the copyable-string row -->
+        <!-- the bubble carries the background and holds the attachments, the body and the
+             copyable-string row -->
         <LinearLayout
             android:id="@+id/thread_message_bubble"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_below="@id/thread_message_attachments_holder"
             android:layout_marginVertical="@dimen/tiny_margin"
             android:background="@drawable/item_received_background"
             android:orientation="vertical"
             android:padding="@dimen/normal_margin">
+
+            <RelativeLayout
+                android:id="@+id/thread_message_attachments_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:id="@+id/thread_message_attachments_holder"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:divider="@drawable/linear_layout_vertical_divider"
+                    android:orientation="vertical"
+                    android:showDividers="middle" />
+
+                <ImageView
+                    android:id="@+id/thread_message_play_outline"
+                    android:layout_width="@dimen/play_outline_size"
+                    android:layout_height="@dimen/play_outline_size"
+                    android:layout_alignEnd="@id/thread_message_attachments_holder"
+                    android:layout_alignBottom="@id/thread_message_attachments_holder"
+                    android:layout_marginEnd="@dimen/medium_margin"
+                    android:layout_marginBottom="@dimen/activity_margin"
+                    android:src="@drawable/ic_play_outline_vector"
+                    android:visibility="gone"
+                    tools:ignore="ContentDescription" />
+            </RelativeLayout>
 
             <org.fossify.commons.views.MyTextView
                 android:id="@+id/thread_message_body"
@@ -88,5 +102,5 @@
                 tools:text="77342864300046 │ 8830-99"
                 tools:visibility="visible" />
         </LinearLayout>
-    </RelativeLayout>
-</androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+</LinearLayout>

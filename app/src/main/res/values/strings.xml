@@ -150,7 +150,7 @@
         https://github.com/FossifyOrg/Commons/tree/master/commons/src/main/res
     -->
     <string name="tab_conversations">Conversations</string>
-    <string name="tab_service_messages">Service messages</string>
+    <string name="tab_service_messages">Notifications</string>
     <string name="tab_starred_messages">Starred</string>
     <string name="star_message">Star</string>
     <string name="unstar_message">Unstar</string>
@@ -164,6 +164,7 @@
     <string name="appearance_thread_snippet">Thread message snippet</string>
     <string name="appearance_thread_info">Thread message info</string>
     <string name="appearance_link_color">Link color</string>
+    <string name="appearance_highlight_color">Highlight color</string>
     <string name="color_black">Black</string>
     <string name="color_dark_gray">Dark gray</string>
     <string name="color_gray">Gray</string>

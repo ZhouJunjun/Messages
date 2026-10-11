@@ -11,12 +11,13 @@ import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
+import org.fossify.commons.extensions.convertToBitmap
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.notificationManager
-import org.fossify.commons.helpers.SimpleContactsHelper
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.messages.R
 import org.fossify.messages.activities.ThreadActivity
@@ -120,11 +121,9 @@ class NotificationHelper(private val context: Context) {
                 .build()
         }
 
-        val largeIcon = bitmap ?: if (sender != null) {
-            SimpleContactsHelper(context).getContactLetterIcon(sender)
-        } else {
-            null
-        }
+        // the notification uses the app icon rather than the sender's letter avatar (1.0.7 spec);
+        // a real contact photo still wins
+        val largeIcon = bitmap ?: appIconBitmap()
         val builder = NotificationCompat.Builder(context, notificationChannelId).apply {
             when (context.config.lockScreenVisibilitySetting) {
                 LOCK_SCREEN_SENDER_MESSAGE -> {
@@ -211,7 +210,7 @@ class NotificationHelper(private val context: Context) {
 
         val summaryText =
             String.format(context.getString(R.string.message_sending_error), recipientName)
-        val largeIcon = SimpleContactsHelper(context).getContactLetterIcon(recipientName)
+        val largeIcon = appIconBitmap()
         val builder = NotificationCompat.Builder(context, notificationChannelId)
             .setContentTitle(context.getString(R.string.message_not_sent_short))
             .setContentText(summaryText)
@@ -228,6 +227,13 @@ class NotificationHelper(private val context: Context) {
 
         notificationManager.notify(notificationId, builder.build())
     }
+
+    /**
+     * The launcher icon as a bitmap, used as the notification's large icon when the sender has no
+     * contact photo (1.0.7 spec).
+     */
+    private fun appIconBitmap(): Bitmap? =
+        AppCompatResources.getDrawable(context, R.mipmap.ic_launcher)?.convertToBitmap()
 
     private fun createChannel(id: String, name: String) {
         val audioAttributes = AudioAttributes.Builder()

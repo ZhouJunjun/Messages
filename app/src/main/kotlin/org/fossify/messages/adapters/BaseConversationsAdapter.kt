@@ -21,6 +21,7 @@ import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getContrastColor
 import org.fossify.commons.extensions.getTextSize
+import org.fossify.commons.extensions.highlightTextPart
 import org.fossify.commons.extensions.setupViewBackground
 import org.fossify.commons.helpers.FontHelper
 import org.fossify.commons.helpers.ensureBackgroundThread
@@ -57,6 +58,20 @@ abstract class BaseConversationsAdapter(
     private var drafts = HashMap<Long, String>()
 
     private var recyclerViewState: Parcelable? = null
+
+    /**
+     * Term highlighted inside the title / snippet while a search is active. Setting it rebinds the
+     * visible rows, otherwise typing one more character would keep the old highlight whenever the
+     * matching set happens to stay the same (1.0.7 spec).
+     */
+    var highlightText: String = ""
+        set(value) {
+            if (field != value) {
+                field = value
+                @Suppress("NotifyDataSetChanged")
+                notifyDataSetChanged()
+            }
+        }
 
     init {
         setupDragListener(true)
@@ -168,14 +183,26 @@ abstract class BaseConversationsAdapter(
             val config = activity.config
             val serviceName = extractServiceName(conversation.snippet)
 
+            // The resolved contact name wins over the `【签名】` extracted from the message body, so
+            // a row reads exactly like its thread toolbar does - e.g. "中国联通" instead of
+            // "积分提醒". Only when the number has no contact name do we show the signature, and
+            // failing that the raw number (1.0.7 spec).
+            val displayName = conversation.title.takeIf { AvatarColors.isRealName(it) }
+                ?: serviceName
+                ?: conversation.title
+
+            val highlight = highlightText
+            val highlightColor = config.highlightColor
+
             conversationAddress.apply {
-                text = serviceName ?: conversation.title
+                text = if (highlight.isEmpty()) displayName else displayName.highlightTextPart(highlight, highlightColor)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeTitleTextSize.toFloat())
                 setTextColor(config.homeTitleTextColor)
             }
 
             conversationBodyShort.apply {
-                text = sanitizeForDisplay(smsDraft ?: conversation.snippet)
+                val snippetText = sanitizeForDisplay(smsDraft ?: conversation.snippet)
+                text = if (highlight.isEmpty()) snippetText else snippetText.highlightTextPart(highlight, highlightColor)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeSnippetTextSize.toFloat())
                 setTextColor(config.homeSnippetTextColor)
             }
@@ -201,10 +228,10 @@ abstract class BaseConversationsAdapter(
 
             setupBadgeCount(unreadCountBadge, isUnread, conversation.unreadCount)
 
-            // A colored avatar showing the first up-to-4 characters of the display name - the
-            // service name, or the contact name. Anything without a real name (unknown numbers,
-            // services without a signature) falls back to the neutral placeholder avatar.
-            val avatarName = serviceName ?: conversation.title.takeIf { AvatarColors.isRealName(it) }
+            // A colored avatar showing the first up-to-4 characters of the same display name the
+            // title uses. Anything without a real name (unknown numbers, services without a
+            // signature) falls back to the neutral placeholder avatar.
+            val avatarName = displayName.takeIf { AvatarColors.isRealName(it) }
             if (avatarName != null) {
                 conversationImage.beGone()
                 conversationAvatarText.apply {

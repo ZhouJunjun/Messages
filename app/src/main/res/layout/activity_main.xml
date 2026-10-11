@@ -149,14 +149,11 @@
                 android:textSize="@dimen/bigger_text_size"
                 android:textStyle="italic" />
 
-            <org.fossify.commons.views.MyRecyclerView
-                android:id="@+id/search_results_list"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:scrollbars="vertical"
-                app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager" />
-
+            <!--
+              No list here any more: search hits are rendered by the normal conversations list, so
+              they keep the tab strip, the row layout and the swipe navigation (1.0.7 spec). This
+              holder now only carries the two hint labels.
+            -->
         </RelativeLayout>
     </RelativeLayout>
 
