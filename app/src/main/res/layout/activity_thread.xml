@@ -116,8 +116,11 @@
             android:id="@+id/thread_messages_fastscroller"
             android:layout_width="match_parent"
             android:layout_height="0dp"
+            app:handleWidth="21dp"
             app:layout_constraintBottom_toTopOf="@id/short_code_holder"
             app:layout_constraintTop_toBottomOf="@id/thread_add_contacts"
+            app:trackMarginEnd="0dp"
+            app:trackMarginStart="0dp"
             app:supportSwipeToRefresh="true">
 
             <org.fossify.commons.views.MyRecyclerView

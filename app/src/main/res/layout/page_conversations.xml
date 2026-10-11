@@ -8,7 +8,10 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/page_fastscroller"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    app:handleWidth="21dp"
+    app:trackMarginStart="0dp"
+    app:trackMarginEnd="0dp">
 
     <org.fossify.commons.views.MyRecyclerView
         android:id="@+id/page_list"

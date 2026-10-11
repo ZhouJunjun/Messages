@@ -138,8 +138,8 @@ class ThreadAdapter(
         /** Gap between the SIM label, the sender number and the timestamp in the metadata line. */
         private const val METADATA_PART_GAP_DP = 10
 
-        /** Opacity of the highlight layer laid over the bubble a jump landed on (1.0.9 spec). */
-        private const val HIGHLIGHT_ALPHA = 0.3f
+        /** Opacity of the highlight layer laid over the bubble a jump landed on (1.0.9 spec; 30% -> 20% in 1.1.01). */
+        private const val HIGHLIGHT_ALPHA = 0.2f
     }
 
     init {

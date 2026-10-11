@@ -67,6 +67,7 @@ import org.fossify.messages.databinding.ActivityMainBinding
 import org.fossify.messages.extensions.clearAllMessagesIfNeeded
 import org.fossify.messages.extensions.clearExpiredScheduledMessages
 import org.fossify.messages.extensions.config
+import org.fossify.messages.extensions.getStarredMessageIds
 import org.fossify.messages.extensions.conversationsDB
 import org.fossify.messages.extensions.scanConversations
 import org.fossify.messages.extensions.getMessages
@@ -135,6 +136,12 @@ class MainActivity : SimpleActivity() {
      */
     private var searchActive = false
     private var searchMessageResults: List<Message> = emptyList()
+
+    /**
+     * Ids of every starred message, refreshed on a background thread whenever a search runs, so a
+     * search row can draw its star without touching the database while binding (1.1.01 spec).
+     */
+    private var starredMessageIds: Set<Long> = emptySet()
 
     /** Debounce plumbing for the search box (1.0.8 spec: 1s). */
     private val searchHandler = Handler(Looper.getMainLooper())
@@ -229,6 +236,16 @@ class MainActivity : SimpleActivity() {
         checkShortcut()
         refreshListAppearance()
         restoreAvatarTextColors()
+
+        // Leaving for the settings screen and coming back can recreate this activity (a custom
+        // appearance or theme change does), which resets the in-memory search state while the
+        // search box keeps its text - the results then silently fell back to the full list
+        // (1.1.01 bug fix). Re-running the search whenever the box holds a query that is not the
+        // one currently being shown puts the results back.
+        val searchBoxText = binding.mainMenu.binding.topToolbarSearch.text?.toString().orEmpty()
+        if (searchBoxText.isNotEmpty() && (searchBoxText != lastSearchedText || !searchActive)) {
+            runSearch(searchBoxText)
+        }
     }
 
     override fun onPause() {
@@ -341,15 +358,18 @@ class MainActivity : SimpleActivity() {
 
         // commons pins the box to ?attr/actionBarSize (56dp) with 16dp insets on every side and
         // lets the EditText keep its own minHeight, which is why it stayed bulky no matter what the
-        // runtime colours did. The height and the insets are cut right down here, and the
-        // EditText's minHeight is cleared so it cannot stretch the box back open (1.0.8 rework).
+        // runtime colours did. The height is cut right down here, the EditText's minHeight is
+        // cleared so it cannot stretch the box back open, and the *inner* inset is small - while the
+        // box itself keeps the standard activity margin on both sides, so its left edge lines up
+        // with the tab labels and the avatars of the rows below (1.0.8 rework + 1.1.01 spec).
         val density = resources.displayMetrics.density
         val boxPaddingH = (SEARCH_BOX_H_PADDING_DP * density).toInt()
+        val boxMarginH = resources.getDimensionPixelSize(org.fossify.commons.R.dimen.activity_margin)
         search.searchBarContainer.apply {
             layoutParams = layoutParams.apply {
                 height = (SEARCH_BOX_HEIGHT_DP * density).toInt()
             }
-            setPadding(boxPaddingH, 0, boxPaddingH, 0)
+            setPadding(boxMarginH, 0, boxMarginH, 0)
         }
         search.topToolbarSearch.apply {
             minimumHeight = 0
@@ -741,6 +761,10 @@ class MainActivity : SimpleActivity() {
             val results = searchMessagesForTab(tab)
             (list?.adapter as? StarredMessagesAdapter)?.apply {
                 highlightText = lastSearchedText
+                // these rows are search hits, not the starred tab, so every one of them carries a
+                // star toggle and can be starred straight from the results (1.1.01 spec)
+                showStarToggle = true
+                starredMessageIds = this@MainActivity.starredMessageIds
             }?.submitList(results)
 
             if (tab == currentTab) {
@@ -952,6 +976,8 @@ class MainActivity : SimpleActivity() {
                 val list = pageLists[TAB_STARRED] ?: return@runOnUiThread
                 (list.adapter as? StarredMessagesAdapter)?.apply {
                     highlightText = searchedText
+                    // the starred tab holds nothing but starred messages, so it needs no toggle
+                    showStarToggle = false
                 }?.submitList(filtered)
 
                 if (currentTab == TAB_STARRED) {
@@ -1147,13 +1173,22 @@ class MainActivity : SimpleActivity() {
             } catch (_: Exception) {
                 emptyList()
             }
+            // resolved here, off the main thread: the rows read it while binding (1.1.01 spec)
+            val starIds = try {
+                getStarredMessageIds()
+            } catch (_: Exception) {
+                emptySet<Long>()
+            }
 
             if (text == lastSearchedText) {
                 // newest first, matching how every other list is ordered
                 searchMessageResults = messages.sortedWith(
                     compareByDescending<Message> { it.date }.thenByDescending { it.id }
                 )
-                runOnUiThread { refreshConversationList() }
+                runOnUiThread {
+                    starredMessageIds = starIds
+                    refreshConversationList()
+                }
             }
         }
     }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hollow star for the "not starred" state of the search-result rows (1.1.01 spec).
+  Same outline as ic_star_filled_vector, stroked instead of filled; tinted at runtime.
+
+  🔴 Scale (1.1.02 rework): a stroke straddles the path, so stroking the raw outline pushes the
+  silhouette 1dp (half of strokeWidth 2) past the filled star's on every side and the hollow icon
+  reads noticeably bigger. The group pulls the path in to 0.9 about the star's centre, which brings
+  the stroked silhouette back to ~20 x 19 viewport units - the exact footprint of the solid star.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:pivotX="12"
+        android:pivotY="11.5"
+        android:scaleX="0.9"
+        android:scaleY="0.9">
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="2.2"
+            android:strokeLineJoin="round"
+            android:pathData="M12,17.27L18.18,21l-1.64,-7.03L22,9.24l-7.19,-0.61L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21z" />
+    </group>
+</vector>

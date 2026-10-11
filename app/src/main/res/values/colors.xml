@@ -17,5 +17,5 @@
       @color/color_primary, which is also the toolbar / sent-bubble colour, so it gets its own
       entry rather than overriding the theme colour.
     -->
-    <color name="launcher_background">#FF8EA6B8</color>
+    <color name="launcher_background">#FF0097A1</color>
 </resources>
