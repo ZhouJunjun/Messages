@@ -58,7 +58,13 @@ data class Message(
         }
 
         fun areContentsTheSame(old: Message, new: Message): Boolean {
+            // `type` decides which side the bubble is drawn on and which view type is used, and
+            // `status` drives the "sent" check mark on the metadata line. DiffUtil only rebinds
+            // a row when the contents differ, so both have to be part of the comparison -
+            // otherwise an outbox -> sent transition leaves a stale row on screen (1.0.4 spec).
             return old.body == new.body &&
+                old.type == new.type &&
+                old.status == new.status &&
                 old.threadId == new.threadId &&
                 old.date == new.date &&
                 old.isMMS == new.isMMS &&

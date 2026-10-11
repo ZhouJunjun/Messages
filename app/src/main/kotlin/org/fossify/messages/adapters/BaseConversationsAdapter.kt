@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import org.fossify.commons.adapters.MyRecyclerViewListAdapter
+import org.fossify.commons.extensions.adjustAlpha
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
@@ -32,11 +33,11 @@ import org.fossify.messages.extensions.getAllDrafts
 import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.extractCopyableStrings
 import org.fossify.messages.helpers.extractServiceName
+import org.fossify.messages.helpers.formatMessageDateTime
 import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.models.Conversation
 import org.joda.time.DateTime
-import org.joda.time.LocalDate
 
 @Suppress("LeakingThis")
 abstract class BaseConversationsAdapter(
@@ -180,9 +181,7 @@ abstract class BaseConversationsAdapter(
             }
 
             conversationDate.apply {
-                val dateTime = DateTime(conversation.date * 1000L)
-                val isToday = dateTime.toLocalDate() == LocalDate.now()
-                text = dateTime.toString(if (isToday) "HH:mm:ss" else "yy/MM/dd HH:mm")
+                text = DateTime(conversation.date * 1000L).formatMessageDateTime()
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeInfoTextSize.toFloat())
                 setTextColor(config.homeInfoTextColor)
             }
@@ -223,15 +222,17 @@ abstract class BaseConversationsAdapter(
             }
 
             val copyables = extractCopyableStrings(conversation.snippet)
+            // Dividers follow the snippet colour at 80% alpha (1.0.4 spec).
+            val dividerColor = config.homeSnippetTextColor.adjustAlpha(0.8f)
             conversationCopyablesDivider.apply {
                 beVisibleIf(copyables.isNotEmpty())
-                setBackgroundColor(config.homeInfoTextColor)
+                setBackgroundColor(dividerColor)
             }
             conversationCopyables.setupCopyableStrings(
                 context = activity,
                 items = copyables,
                 textColor = config.copyableTextColor,
-                dividerColor = config.homeInfoTextColor,
+                dividerColor = dividerColor,
                 fontSizeSp = config.copyableTextSize.toFloat()
             )
         }

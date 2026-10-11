@@ -7,6 +7,7 @@ import android.view.Menu
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import org.fossify.commons.adapters.MyRecyclerViewListAdapter
+import org.fossify.commons.extensions.adjustAlpha
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
@@ -19,11 +20,11 @@ import org.fossify.messages.extensions.config
 import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.extractCopyableStrings
 import org.fossify.messages.helpers.extractServiceName
+import org.fossify.messages.helpers.formatMessageDateTime
 import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.models.Message
 import org.joda.time.DateTime
-import org.joda.time.LocalDate
 
 /**
  * Read-only list of starred messages. Selection / contextual action mode is intentionally
@@ -89,9 +90,7 @@ class StarredMessagesAdapter(
                 }
 
                 starredDate.apply {
-                    val dateTime = DateTime(message.millis())
-                    val isToday = dateTime.toLocalDate() == LocalDate.now()
-                    text = dateTime.toString(if (isToday) "HH:mm:ss" else "yy/MM/dd HH:mm")
+                    text = DateTime(message.millis()).formatMessageDateTime()
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeInfoTextSize.toFloat())
                     setTextColor(config.homeInfoTextColor)
                 }
@@ -114,15 +113,17 @@ class StarredMessagesAdapter(
                 }
 
                 val copyables = extractCopyableStrings(message.body)
+                // Dividers follow the snippet colour at 80% alpha (1.0.4 spec).
+                val dividerColor = config.homeSnippetTextColor.adjustAlpha(0.8f)
                 starredCopyablesDivider.apply {
                     beVisibleIf(copyables.isNotEmpty())
-                    setBackgroundColor(config.homeInfoTextColor)
+                    setBackgroundColor(dividerColor)
                 }
                 starredCopyables.setupCopyableStrings(
                     context = activity,
                     items = copyables,
                     textColor = config.copyableTextColor,
-                    dividerColor = config.homeInfoTextColor,
+                    dividerColor = dividerColor,
                     fontSizeSp = config.copyableTextSize.toFloat()
                 )
             }

@@ -188,7 +188,6 @@ import org.fossify.messages.models.SIMCard
 import org.fossify.messages.models.ThreadItem
 import org.fossify.messages.models.ThreadItem.ThreadError
 import org.fossify.messages.models.ThreadItem.ThreadSending
-import org.fossify.messages.models.ThreadItem.ThreadSent
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
@@ -441,7 +440,6 @@ class ThreadActivity : SimpleActivity() {
 
                 setupThreadTitle()
                 setupSIMSelector()
-                updateMessageType()
                 callback()
             }
         }
@@ -1218,7 +1216,6 @@ class ThreadActivity : SimpleActivity() {
 
         participants.add(contact)
         showSelectedContacts()
-        updateMessageType()
     }
 
     private fun markAsUnread() {
@@ -1271,6 +1268,7 @@ class ThreadActivity : SimpleActivity() {
 
         var hadUnreadItems = false
         val cnt = messageSnapshot.size
+        val sentStatus = HashMap<Long, Boolean>()
         for (i in 0 until cnt) {
             val message = messageSnapshot.getOrNull(i) ?: continue
             items.add(message)
@@ -1289,13 +1287,10 @@ class ThreadActivity : SimpleActivity() {
                 conversationsDB.markRead(threadId)
             }
 
-            if (i == cnt - 1 && (message.type == Telephony.Sms.MESSAGE_TYPE_SENT)) {
-                items.add(
-                    ThreadSent(
-                        messageId = message.id,
-                        delivered = message.status == Telephony.Sms.STATUS_COMPLETE
-                    )
-                )
+            // The "sent" check mark is no longer a separate row: it is drawn on the message's
+            // metadata line (1.0.4 spec), so only the status has to be handed to the adapter.
+            if (i == cnt - 1 && message.type == Telephony.Sms.MESSAGE_TYPE_SENT) {
+                sentStatus[message.id] = message.status == Telephony.Sms.STATUS_COMPLETE
             }
         }
 
@@ -1303,7 +1298,10 @@ class ThreadActivity : SimpleActivity() {
             bus?.post(Events.RefreshConversations())
         }
 
-        (binding.threadMessagesList.adapter as? ThreadAdapter)?.simIdMap = simIdMap
+        (binding.threadMessagesList.adapter as? ThreadAdapter)?.apply {
+            simIdMap = this@ThreadActivity.simIdMap
+            this.sentStatus = sentStatus
+        }
         return items
     }
 
@@ -1493,8 +1491,6 @@ class ThreadActivity : SimpleActivity() {
                 threadSendMessage.alpha = 0.4f
             }
         }
-
-        updateMessageType()
     }
 
     private fun sendMessage() {
@@ -1697,7 +1693,6 @@ class ThreadActivity : SimpleActivity() {
         participants =
             participants.filter { it.rawId != id }.toMutableList() as ArrayList<SimpleContact>
         showSelectedContacts()
-        updateMessageType()
     }
 
     private fun getPhoneNumbersFromIntent(): ArrayList<String> {
@@ -1811,16 +1806,6 @@ class ThreadActivity : SimpleActivity() {
         val isGroupMms = participants.size > 1 && config.sendGroupMessageMMS
         val isLongMmsMessage = isLongMmsMessage(text)
         return getAttachmentSelections().isNotEmpty() || isGroupMms || isLongMmsMessage
-    }
-
-    private fun updateMessageType() {
-        val text = binding.messageHolder.threadTypeMessage.text.toString()
-        val stringId = if (isMmsMessage(text)) {
-            R.string.mms
-        } else {
-            R.string.sms
-        }
-        binding.messageHolder.threadSendMessage.setText(stringId)
     }
 
     private fun showScheduledMessageInfo(message: Message) {

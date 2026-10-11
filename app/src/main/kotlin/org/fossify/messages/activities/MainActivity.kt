@@ -349,6 +349,13 @@ class MainActivity : SimpleActivity() {
             val privateContacts = MyContactsContentProvider.getSimpleContacts(this, privateCursor)
             val conversations = getConversations(privateContacts = privateContacts)
 
+            // A scan that comes back completely empty while conversations are cached means the
+            // scan itself failed (provider hiccup, revoked permission, aborted cursor) rather
+            // than "every single thread was deleted". Purging in that case would wipe the whole
+            // list, which is the bug behind the conversation row vanishing from the list right
+            // after it was opened and closed (1.0.4 spec).
+            val scanIsUsable = conversations.isNotEmpty() || cachedConversations.isEmpty()
+
             conversations.forEach { clonedConversation ->
                 val threadIds = cachedConversations.map { it.threadId }
                 if (!threadIds.contains(clonedConversation.threadId)) {
@@ -362,7 +369,7 @@ class MainActivity : SimpleActivity() {
 
                 val isTemporaryThread = cachedConversation.isScheduled
                 val isConversationDeleted = !conversations.map { it.threadId }.contains(threadId)
-                if (isConversationDeleted && !isTemporaryThread) {
+                if (isConversationDeleted && !isTemporaryThread && scanIsUsable) {
                     conversationsDB.deleteThreadId(threadId)
                 }
 

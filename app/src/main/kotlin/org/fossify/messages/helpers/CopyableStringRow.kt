@@ -24,8 +24,8 @@ import org.fossify.commons.extensions.copyToClipboard
  * only the text is coloured, and a vertical bar separates the entries.
  *
  * The separator used to be a "│" text glyph, which rendered noticeably thicker than the
- * horizontal divider above the row. It is now drawn as a real 1dp bar (same colour and same
- * thickness as the horizontal divider), per the 1.0.3 spec. The whole row wraps
+ * horizontal divider above the row. It is now drawn as a real 0.5dp bar (same colour and same
+ * thickness as the horizontal divider), per the 1.0.4 spec. The whole row wraps
  * automatically because it is still a single [TextView].
  *
  * Tapping a string copies it to the clipboard.
@@ -46,7 +46,7 @@ fun TextView.setupCopyableStrings(
     setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
 
     val density = context.resources.displayMetrics.density
-    val barWidth = (1 * density).roundToInt().coerceAtLeast(1)
+    val barWidth = (0.5f * density).roundToInt().coerceAtLeast(1)
     val fontMetrics = paint.fontMetrics
     val barHeight = (fontMetrics.descent - fontMetrics.ascent).roundToInt().coerceAtLeast(barWidth)
 
@@ -77,7 +77,7 @@ fun TextView.setupCopyableStrings(
 }
 
 /**
- * Appends " ▏ " where the middle glyph is replaced by a 1dp wide, full-line-height bar in
+ * Appends " ▏ " where the middle glyph is replaced by a 0.5dp wide, full-line-height bar in
  * [color] - the exact same colour and thickness as the horizontal divider above the row.
  */
 private fun appendDividerBar(

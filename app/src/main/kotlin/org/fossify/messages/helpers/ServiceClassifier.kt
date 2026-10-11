@@ -1,9 +1,22 @@
 package org.fossify.messages.helpers
 
 /**
+ * Shown in the conversation list / thread metadata when the newest message is a picture-only
+ * MMS: the telephony provider's own snippet for such a message is not displayable text, which
+ * is what used to show up as garbage in the list (1.0.4 spec).
+ */
+const val IMAGE_MESSAGE_SNIPPET = "[图片]"
+
+/**
  * Service signature embedded at the start of a message body, e.g. `【京东】` or `[淘宝]`.
  */
 private val SERVICE_NAME_REGEX = Regex("[【\\[]([^】\\]]{1,20})[】\\]]")
+
+/**
+ * The text inside [IMAGE_MESSAGE_SNIPPET]. It looks like a `[...]` signature, so it must never
+ * be mistaken for a service name.
+ */
+private const val IMAGE_PLACEHOLDER_TEXT = "图片"
 
 /**
  * Decides whether a conversation should be treated as a "service conversation".
@@ -24,11 +37,9 @@ fun isServiceConversation(phoneNumber: String, snippet: String): Boolean {
  * Only the latest message body is inspected (per the agreed design).
  */
 fun extractServiceName(snippet: String): String? {
-    return SERVICE_NAME_REGEX.find(snippet)
-        ?.groupValues
-        ?.getOrNull(1)
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
+    return SERVICE_NAME_REGEX.findAll(snippet)
+        .mapNotNull { it.groupValues.getOrNull(1)?.trim() }
+        .firstOrNull { it.isNotEmpty() && !it.equals(IMAGE_PLACEHOLDER_TEXT, ignoreCase = true) }
 }
 
 /**
@@ -46,12 +57,4 @@ fun isServiceNumber(phoneNumber: String): Boolean {
         return true
     }
     return digits.length in 5..8
-}
-
-/**
- * The display name of a service conversation: the extracted signature, falling back to
- * the phone number when no signature can be found.
- */
-fun serviceDisplayName(phoneNumber: String, snippet: String): String {
-    return extractServiceName(snippet) ?: phoneNumber
 }

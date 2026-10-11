@@ -5,6 +5,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.util.TypedValue
 import android.view.Menu
 import android.view.View
@@ -26,7 +28,9 @@ import com.bumptech.glide.load.resource.bitmap.FitCenter
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
+import kotlin.math.roundToInt
 import org.fossify.commons.adapters.MyRecyclerViewListAdapter
+import org.fossify.commons.extensions.adjustAlpha
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
@@ -55,7 +59,6 @@ import org.fossify.messages.databinding.ItemAttachmentVcardBinding
 import org.fossify.messages.databinding.ItemMessageBinding
 import org.fossify.messages.databinding.ItemThreadErrorBinding
 import org.fossify.messages.databinding.ItemThreadSendingBinding
-import org.fossify.messages.databinding.ItemThreadSuccessBinding
 import org.fossify.messages.dialogs.DeleteConfirmationDialog
 import org.fossify.messages.dialogs.MessageDetailsDialog
 import org.fossify.messages.dialogs.SelectTextDialog
@@ -70,12 +73,13 @@ import org.fossify.messages.extensions.starMessage
 import org.fossify.messages.extensions.subscriptionManagerCompat
 import org.fossify.messages.extensions.unstarMessage
 import org.fossify.messages.helpers.EXTRA_VCARD_URI
+import org.fossify.messages.helpers.GapSpan
 import org.fossify.messages.helpers.THREAD_RECEIVED_MESSAGE
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_ERROR
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_SENDING
-import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_SENT
 import org.fossify.messages.helpers.extractCopyableStrings
+import org.fossify.messages.helpers.formatMessageDateTime
 import org.fossify.messages.helpers.generateStableId
 import org.fossify.messages.helpers.setupAudio
 import org.fossify.messages.helpers.setupCopyableStrings
@@ -86,9 +90,7 @@ import org.fossify.messages.models.Message
 import org.fossify.messages.models.ThreadItem
 import org.fossify.messages.models.ThreadItem.ThreadError
 import org.fossify.messages.models.ThreadItem.ThreadSending
-import org.fossify.messages.models.ThreadItem.ThreadSent
 import org.joda.time.DateTime
-import org.joda.time.LocalDate
 
 class ThreadAdapter(
     activity: SimpleActivity,
@@ -102,12 +104,21 @@ class ThreadAdapter(
     /** subscriptionId -> displayed SIM slot number ("1", "2", ...), filled by the activity. */
     var simIdMap: Map<Int, String> = emptyMap()
 
+    /**
+     * messageId -> delivered flag for the sent messages that reached the "sent" state. Filled by
+     * the activity; the check mark is rendered inside the message's metadata line (1.0.4 spec).
+     */
+    var sentStatus: Map<Long, Boolean> = emptyMap()
+
     @SuppressLint("MissingPermission")
     private val hasMultipleSIMCards = (activity.subscriptionManagerCompat().activeSubscriptionInfoList?.size ?: 0) > 1
     private val maxChatBubbleWidth = (activity.usableScreenSize.x * 0.8f).toInt()
 
     companion object {
         private const val MAX_MEDIA_HEIGHT_RATIO = 3
+
+        /** Gap between the SIM label, the sender number and the timestamp in the metadata line. */
+        private const val METADATA_PART_GAP_DP = 30
     }
 
     init {
@@ -180,7 +191,6 @@ class ThreadAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = when (viewType) {
             THREAD_SENT_MESSAGE_ERROR -> ItemThreadErrorBinding.inflate(layoutInflater, parent, false)
-            THREAD_SENT_MESSAGE_SENT -> ItemThreadSuccessBinding.inflate(layoutInflater, parent, false)
             THREAD_SENT_MESSAGE_SENDING -> ItemThreadSendingBinding.inflate(layoutInflater, parent, false)
             else -> ItemMessageBinding.inflate(layoutInflater, parent, false)
         }
@@ -195,7 +205,6 @@ class ThreadAdapter(
         holder.bindView(item, isClickable, isLongClickable) { itemView, _ ->
             when (item) {
                 is ThreadError -> setupThreadError(itemView)
-                is ThreadSent -> setupThreadSuccess(itemView, item.delivered)
                 is ThreadSending -> setupThreadSending(itemView)
                 is Message -> setupView(holder, itemView, item)
             }
@@ -208,14 +217,12 @@ class ThreadAdapter(
             is Message -> item.getStableId()
             is ThreadError -> generateStableId(THREAD_SENT_MESSAGE_ERROR, item.messageId)
             is ThreadSending -> generateStableId(THREAD_SENT_MESSAGE_SENDING, item.messageId)
-            is ThreadSent -> generateStableId(THREAD_SENT_MESSAGE_SENT, item.messageId)
         }
     }
 
     override fun getItemViewType(position: Int): Int {
         return when (val item = getItem(position)) {
             is ThreadError -> THREAD_SENT_MESSAGE_ERROR
-            is ThreadSent -> THREAD_SENT_MESSAGE_SENT
             is ThreadSending -> THREAD_SENT_MESSAGE_SENDING
             is Message -> if (item.isReceivedMessage()) THREAD_RECEIVED_MESSAGE else THREAD_SENT_MESSAGE
         }
@@ -354,11 +361,31 @@ class ThreadAdapter(
             val config = activity.config
             val received = message.isReceivedMessage()
 
+            // The first message keeps a 20dp gap to the toolbar; every following message is
+            // separated from the previous one by 40dp (1.0.4 spec).
+            val isFirstMessage = holder.absoluteAdapterPosition == 0
+            applyHolderTopMargin(threadMessageHolder, if (isFirstMessage) 20 else 40)
+
             threadMessageMetadata.apply {
                 beVisible()
                 text = buildMetadataText(message)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.threadInfoTextSize.toFloat())
                 setTextColor(config.threadInfoTextColor)
+
+                // sent messages carry the "sent" check mark at the end of the first line,
+                // tinted with the copyable-string colour (1.0.4 spec)
+                val delivered = if (received) null else sentStatus[message.id]
+                val checkDrawable = delivered?.let {
+                    AppCompatResources.getDrawable(
+                        activity,
+                        if (it) R.drawable.ic_check_double_vector else org.fossify.commons.R.drawable.ic_check_vector
+                    )?.mutate()?.apply {
+                        applyColorFilter(config.copyableTextColor)
+                        val size = lineHeight
+                        setBounds(0, 0, size, size)
+                    }
+                }
+                setCompoundDrawablesRelative(null, null, checkDrawable, null)
             }
 
             threadMessageBody.apply {
@@ -383,15 +410,17 @@ class ThreadAdapter(
 
             // copyable-string row: only for received messages, per the agreed design
             val copyables = if (received) extractCopyableStrings(message.body) else emptyList()
+            // Dividers follow the snippet colour at 80% alpha (1.0.4 spec).
+            val dividerColor = config.threadSnippetTextColor.adjustAlpha(0.8f)
             threadMessageCopyablesDivider.apply {
                 beVisibleIf(copyables.isNotEmpty())
-                setBackgroundColor(config.threadInfoTextColor)
+                setBackgroundColor(dividerColor)
             }
             threadMessageCopyables.setupCopyableStrings(
                 context = activity,
                 items = copyables,
                 textColor = config.copyableTextColor,
-                dividerColor = config.threadInfoTextColor,
+                dividerColor = dividerColor,
                 fontSizeSp = config.copyableTextSize.toFloat()
             )
 
@@ -419,25 +448,38 @@ class ThreadAdapter(
 
     /**
      * First line of every message: an optional SIM label (only with multiple SIMs), the sender
-     * number (received messages only) and the timestamp.
+     * number (received messages only) and the timestamp, separated by 30dp gaps (1.0.4 spec).
+     * The "sent" check mark is appended to this line as a compound drawable.
      */
-    private fun buildMetadataText(message: Message): String {
-        val parts = ArrayList<String>()
+    private fun buildMetadataText(message: Message): CharSequence {
+        val builder = SpannableStringBuilder()
+        val gapPx = (METADATA_PART_GAP_DP * activity.resources.displayMetrics.density).roundToInt()
+
+        fun appendPart(part: String) {
+            if (builder.isNotEmpty()) {
+                val start = builder.length
+                builder.append('\u200B')
+                builder.setSpan(
+                    GapSpan(gapPx),
+                    start,
+                    builder.length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            builder.append(part)
+        }
+
         if (hasMultipleSIMCards) {
-            parts.add("[${simIdMap[message.subscriptionId] ?: "?"}]")
+            appendPart("[${simIdMap[message.subscriptionId] ?: "?"}]")
         }
         if (message.isReceivedMessage() && message.senderPhoneNumber.isNotEmpty()) {
-            parts.add(message.senderPhoneNumber)
+            appendPart(message.senderPhoneNumber)
         }
-        parts.add(formatTimestamp(message.millis()))
-        return parts.joinToString(" ")
+        appendPart(formatTimestamp(message.millis()))
+        return builder
     }
 
-    private fun formatTimestamp(millis: Long): String {
-        val dateTime = DateTime(millis)
-        val pattern = if (dateTime.toLocalDate() == LocalDate.now()) "HH:mm:ss" else "yy/MM/dd HH:mm"
-        return dateTime.toString(pattern)
-    }
+    private fun formatTimestamp(millis: Long): String = DateTime(millis).formatMessageDateTime()
 
     private fun setupReceivedMessageView(messageBinding: ItemMessageBinding, message: Message) {
         messageBinding.apply {
@@ -504,6 +546,14 @@ class ThreadAdapter(
         view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             marginStart = (startDp * density).toInt()
             marginEnd = (endDp * density).toInt()
+        }
+    }
+
+    /** Vertical spacing of a message row; the first message uses a smaller top gap. */
+    private fun applyHolderTopMargin(view: View, topDp: Int) {
+        val topPx = (topDp * activity.resources.displayMetrics.density).roundToInt()
+        view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            topMargin = topPx
         }
     }
 
@@ -626,13 +676,6 @@ class ThreadAdapter(
         parent.addView(attachmentView)
     }
 
-    private fun setupThreadSuccess(view: View, isDelivered: Boolean) {
-        ItemThreadSuccessBinding.bind(view).apply {
-            threadSuccess.setImageResource(if (isDelivered) R.drawable.ic_check_double_vector else org.fossify.commons.R.drawable.ic_check_vector)
-            threadSuccess.applyColorFilter(textColor)
-        }
-    }
-
     private fun setupThreadError(view: View) {
         val binding = ItemThreadErrorBinding.bind(view)
         binding.threadError.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize - 4)
@@ -654,7 +697,6 @@ private class ThreadItemDiffCallback : DiffUtil.ItemCallback<ThreadItem>() {
         if (oldItem::class.java != newItem::class.java) return false
         return when (oldItem) {
             is ThreadError -> oldItem.messageId == (newItem as ThreadError).messageId
-            is ThreadSent -> oldItem.messageId == (newItem as ThreadSent).messageId
             is ThreadSending -> oldItem.messageId == (newItem as ThreadSending).messageId
             is Message -> Message.areItemsTheSame(oldItem, newItem as Message)
         }
@@ -665,7 +707,6 @@ private class ThreadItemDiffCallback : DiffUtil.ItemCallback<ThreadItem>() {
         return when (oldItem) {
             is ThreadSending -> true
             is ThreadError -> oldItem.messageText == (newItem as ThreadError).messageText
-            is ThreadSent -> oldItem.delivered == (newItem as ThreadSent).delivered
             is Message -> Message.areContentsTheSame(oldItem, newItem as Message)
         }
     }

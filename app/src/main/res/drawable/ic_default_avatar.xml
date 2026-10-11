@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- neutral avatar used when no contact name and no service name is available.
-     Rounded square, so it matches the coloured text avatars (see avatar_background.xml). -->
+     Rounded square, so it matches the coloured text avatars (see avatar_background.xml).
+
+     NOTE: the size MUST be declared on the shape item. Without it the layer-list takes the
+     intrinsic size of its only sized child (the 18dp person icon), so the 12dp corner radius
+     is larger than half of that box and Android clamps it into a full circle. That is why this
+     avatar used to render round even though the shape is a rectangle (1.0.4 spec). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
+    <item
+        android:width="48dp"
+        android:height="48dp">
         <shape android:shape="rectangle">
             <corners android:radius="12dp" />
             <solid android:color="@color/avatar_default_background" />

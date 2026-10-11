@@ -12,7 +12,16 @@ interface ConversationsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertOrUpdate(conversation: Conversation): Long
 
-    @Query("SELECT (SELECT body FROM messages WHERE messages.thread_id = conversations.thread_id ORDER BY messages.date DESC LIMIT 1) as new_snippet, * FROM conversations")
+    /**
+     * The list snippet comes from the newest local message, but only when that message actually
+     * has displayable text. A picture-only MMS is mirrored into the local `messages` table with
+     * an empty body, and that empty body used to override the stored snippet and blank the row -
+     * the stored snippet is the rebuilt one (e.g. "[图片]", 1.0.4 spec).
+     */
+    @Query(
+        "SELECT (SELECT body FROM messages WHERE messages.thread_id = conversations.thread_id" +
+            " AND body != '' ORDER BY messages.date DESC LIMIT 1) as new_snippet, * FROM conversations"
+    )
     fun getAllWithLatestSnippet(): List<ConversationWithSnippetOverride>
 
     fun getAll(): List<Conversation> {

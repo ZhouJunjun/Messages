@@ -175,9 +175,7 @@
         android:clickable="false"
         android:contentDescription="@string/ok"
         android:drawableTop="@drawable/ic_send_vector"
-        android:paddingVertical="@dimen/small_margin"
-        android:text="@string/sms"
-        android:textSize="@dimen/smaller_text_size"
+        android:gravity="center"
         app:layout_constraintBottom_toBottomOf="@+id/thread_type_message"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@+id/thread_type_message" />

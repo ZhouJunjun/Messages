@@ -54,6 +54,7 @@ import org.fossify.messages.databases.MessagesDatabase
 import org.fossify.messages.helpers.AttachmentUtils.parseAttachmentNames
 import org.fossify.messages.helpers.Config
 import org.fossify.messages.helpers.FILE_SIZE_NONE
+import org.fossify.messages.helpers.IMAGE_MESSAGE_SNIPPET
 import org.fossify.messages.helpers.MAX_MESSAGE_LENGTH
 import org.fossify.messages.helpers.MESSAGES_LIMIT
 import org.fossify.messages.helpers.MessagingCache
@@ -430,6 +431,53 @@ fun Context.getUnreadCountsByThread(): Map<Long, Int> {
     return result
 }
 
+/** MMS dates are stored in milliseconds by most providers, but in seconds by a few. */
+private fun Long.toMillisFromSecondsOrMillis(): Long =
+    if (this < 100_000_000_000L) this * 1000 else this
+
+/**
+ * Threads whose newest message is an MMS rather than an SMS.
+ *
+ * The conversation list only rebuilds the snippet for those threads (the provider snippet of an
+ * MMS is not displayable text), which keeps the extra per-thread queries bounded (1.0.4 spec).
+ */
+private fun Context.getThreadIdsWithNewestMms(): HashSet<Long> {
+    val newestSmsDate = HashMap<Long, Long>()
+    queryCursor(
+        uri = Sms.CONTENT_URI,
+        projection = arrayOf(Sms.THREAD_ID, Sms.DATE),
+        showErrors = false
+    ) { cursor ->
+        val threadId = cursor.getLongValue(Sms.THREAD_ID)
+        val date = cursor.getLongValue(Sms.DATE)
+        if (date > (newestSmsDate[threadId] ?: 0L)) {
+            newestSmsDate[threadId] = date
+        }
+    }
+
+    val newestMmsDate = HashMap<Long, Long>()
+    queryCursor(
+        uri = Mms.CONTENT_URI,
+        projection = arrayOf(Mms.THREAD_ID, Mms.DATE, Mms.MESSAGE_BOX),
+        selection = "${Mms.MESSAGE_BOX} != ${Mms.MESSAGE_BOX_DRAFTS}",
+        showErrors = false
+    ) { cursor ->
+        val threadId = cursor.getLongValue(Mms.THREAD_ID)
+        val date = cursor.getLongValue(Mms.DATE).toMillisFromSecondsOrMillis()
+        if (date > (newestMmsDate[threadId] ?: 0L)) {
+            newestMmsDate[threadId] = date
+        }
+    }
+
+    val result = HashSet<Long>()
+    newestMmsDate.forEach { (threadId, mmsDate) ->
+        if (mmsDate >= (newestSmsDate[threadId] ?: 0L)) {
+            result.add(threadId)
+        }
+    }
+    return result
+}
+
 fun Context.getConversations(
     threadId: Long? = null,
     privateContacts: ArrayList<SimpleContact> = ArrayList(),
@@ -456,6 +504,7 @@ fun Context.getConversations(
     val simpleContactHelper = SimpleContactsHelper(this)
     val blockedNumbers = getBlockedNumbers()
     val unreadMap = getUnreadCountsByThread()
+    val mmsThreadIds = getThreadIdsWithNewestMms()
     try {
         queryCursorUnsafe(
             uri,
@@ -464,57 +513,75 @@ fun Context.getConversations(
             selectionArgs,
             sortOrder
         ) { cursor ->
-            val id = cursor.getLongValue(Threads._ID)
-            var snippet = cursor.getStringValue(Threads.SNIPPET) ?: ""
-            if (snippet.isEmpty()) {
-                snippet = getThreadSnippet(id)
-            }
+            // Each row is isolated: the caller deletes every cached conversation that this scan
+            // does not return (MainActivity.getNewConversations), so a single malformed row
+            // aborting the loop used to make all the not-yet-scanned threads look deleted and
+            // purge them from the list - that is the row that "disappeared" after opening a
+            // conversation and going back (1.0.4 spec).
+            try {
+                val id = cursor.getLongValue(Threads._ID)
+                var snippet = cursor.getStringValue(Threads.SNIPPET) ?: ""
+                if (snippet.isEmpty() || mmsThreadIds.contains(id)) {
+                    // The telephony provider's own snippet for an MMS is not displayable text,
+                    // and that is what showed up as garbage in the list. Rebuild it from the
+                    // message parts instead; a picture-only MMS turns into "[图片]" (1.0.4 spec).
+                    snippet = getThreadSnippet(id)
+                }
 
-            var date = cursor.getLongValue(Threads.DATE)
-            if (date.toString().length > 10) {
-                date /= 1000
-            }
+                var date = cursor.getLongValue(Threads.DATE)
+                if (date.toString().length > 10) {
+                    date /= 1000
+                }
 
-            // drafts are stored locally they take priority over the original date
-            val draft = draftsDB.getDraftById(id)
-            if (draft != null) {
-                date = draft.date / 1000
-            }
+                // drafts are stored locally they take priority over the original date
+                val draft = draftsDB.getDraftById(id)
+                if (draft != null) {
+                    date = draft.date / 1000
+                }
 
-            val rawIds = cursor.getStringValue(Threads.RECIPIENT_IDS)
-            val recipientIds =
-                rawIds.split(" ").filter { it.areDigitsOnly() }.map { it.toInt() }.toMutableList()
-            val phoneNumbers = getThreadPhoneNumbers(recipientIds)
-            if (phoneNumbers.isEmpty() || phoneNumbers.any {
-                    isNumberBlocked(
-                        it,
-                        blockedNumbers
-                    )
-                }) {
-                return@queryCursorUnsafe
-            }
+                val phoneNumbers = try {
+                    val rawIds = cursor.getStringValue(Threads.RECIPIENT_IDS).orEmpty()
+                    val recipientIds =
+                        rawIds.split(" ").filter { it.areDigitsOnly() }.map { it.toInt() }
+                            .toMutableList()
+                    getThreadPhoneNumbers(recipientIds)
+                } catch (e: Exception) {
+                    showErrorToast(e)
+                    return@queryCursorUnsafe
+                }
+                if (phoneNumbers.isEmpty() || phoneNumbers.any {
+                        isNumberBlocked(
+                            it,
+                            blockedNumbers
+                        )
+                    }) {
+                    return@queryCursorUnsafe
+                }
 
-            val names = getThreadContactNames(phoneNumbers, privateContacts)
-            val title = TextUtils.join(", ", names.toTypedArray())
-            val photoUri =
-                if (phoneNumbers.size == 1) simpleContactHelper.getPhotoUriFromPhoneNumber(
-                    phoneNumbers.first()
-                ) else ""
-            val isGroupConversation = phoneNumbers.size > 1
-            val read = cursor.getIntValue(Threads.READ) == 1
-            val unreadCount = if (!read) unreadMap[id] ?: 0 else 0
-            val conversation = Conversation(
-                threadId = id,
-                snippet = snippet,
-                date = date.toInt(),
-                read = read,
-                title = title,
-                photoUri = photoUri,
-                isGroupConversation = isGroupConversation,
-                phoneNumber = phoneNumbers.first(),
-                unreadCount = unreadCount,
-            )
-            conversations.add(conversation)
+                val names = getThreadContactNames(phoneNumbers, privateContacts)
+                val title = TextUtils.join(", ", names.toTypedArray())
+                val photoUri =
+                    if (phoneNumbers.size == 1) simpleContactHelper.getPhotoUriFromPhoneNumber(
+                        phoneNumbers.first()
+                    ) else ""
+                val isGroupConversation = phoneNumbers.size > 1
+                val read = cursor.getIntValue(Threads.READ) == 1
+                val unreadCount = if (!read) unreadMap[id] ?: 0 else 0
+                val conversation = Conversation(
+                    threadId = id,
+                    snippet = snippet,
+                    date = date.toInt(),
+                    read = read,
+                    title = title,
+                    photoUri = photoUri,
+                    isGroupConversation = isGroupConversation,
+                    phoneNumber = phoneNumbers.first(),
+                    unreadCount = unreadCount,
+                )
+                conversations.add(conversation)
+            } catch (e: Exception) {
+                showErrorToast(e)
+            }
         }
     } catch (e: Exception) {
         showErrorToast(e)
@@ -635,7 +702,12 @@ fun Context.getMMS(messageUri: Uri): Message? {
 fun Context.getThreadSnippet(threadId: Long): String {
     val sortOrder = "${Mms.DATE} DESC LIMIT 1"
     val latestMms = getMMS(threadId, sortOrder).firstOrNull()
-    var snippet = latestMms?.body ?: ""
+    var snippet = when {
+        latestMms == null -> ""
+        latestMms.body.isNotEmpty() -> latestMms.body
+        latestMms.attachment?.attachments?.any { it.mimetype.startsWith("image/") } == true -> IMAGE_MESSAGE_SNIPPET
+        else -> ""
+    }
 
     val uri = Sms.CONTENT_URI
     val projection = arrayOf(

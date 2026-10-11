@@ -23,8 +23,9 @@
             android:layout_height="wrap_content"
             android:layout_alignParentTop="true"
             android:layout_marginBottom="@dimen/tiny_margin"
+            android:drawablePadding="8dp"
             android:textSize="@dimen/smaller_text_size"
-            tools:text="[1] 10086 2026/01/02 12:30" />
+            tools:text="[1] 10086 26年1月2日 12:30" />
 
         <LinearLayout
             android:id="@+id/thread_message_attachments_holder"
@@ -71,7 +72,7 @@
             <View
                 android:id="@+id/thread_message_copyables_divider"
                 android:layout_width="match_parent"
-                android:layout_height="1dp"
+                android:layout_height="0.5dp"
                 android:layout_marginTop="@dimen/small_margin"
                 android:visibility="gone"
                 tools:background="#33000000"

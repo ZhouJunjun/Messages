@@ -33,6 +33,7 @@ data class Conversation(
                 old.photoUri == new.photoUri &&
                 old.isGroupConversation == new.isGroupConversation &&
                 old.phoneNumber == new.phoneNumber &&
+                old.isScheduled == new.isScheduled &&
                 old.unreadCount == new.unreadCount
         }
     }
