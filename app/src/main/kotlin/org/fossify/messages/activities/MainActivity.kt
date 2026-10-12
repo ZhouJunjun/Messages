@@ -707,7 +707,11 @@ class MainActivity : SimpleActivity() {
                 activity = this,
                 recyclerView = list,
                 itemClick = { handleStarredMessageClick(it) }
-            ).apply { attachStarToggle() }
+            ).apply {
+                attachStarToggle()
+                // unstarring from the starred tab removes the row (1.1.06 spec)
+                removeUnstarredFromList = true
+            }
 
             wantsMessageRows -> StarredMessagesAdapter(
                 activity = this,
@@ -793,9 +797,9 @@ class MainActivity : SimpleActivity() {
             val results = searchMessagesForTab(tab)
             (list?.adapter as? StarredMessagesAdapter)?.apply {
                 highlightText = lastSearchedText
-                // these rows are search hits, not the starred tab, so every one of them carries a
-                // star toggle and can be starred straight from the results (1.1.01 spec)
-                showStarToggle = true
+                // these rows are search hits, not the starred tab: a tap on the star stars the hit
+                // and keeps the row visible (1.1.06 spec - the toggle now shows on every row)
+                removeUnstarredFromList = false
                 starredMessageIds = this@MainActivity.starredMessageIds
             }?.submitList(results)
 
@@ -1034,8 +1038,11 @@ class MainActivity : SimpleActivity() {
                 val list = pageLists[TAB_STARRED] ?: return@runOnUiThread
                 (list.adapter as? StarredMessagesAdapter)?.apply {
                     highlightText = searchedText
-                    // the starred tab holds nothing but starred messages, so it needs no toggle
-                    showStarToggle = false
+                    // 1.1.06: the starred tab carries the toggle as well - every row here is
+                    // starred by definition, so the ids of the rows we are about to show are all
+                    // it takes to draw them filled, and unstarring one drops it from the list.
+                    removeUnstarredFromList = true
+                    starredMessageIds = filtered.map { it.id }.toSet()
                 }?.submitList(filtered)
 
                 if (currentTab == TAB_STARRED) {

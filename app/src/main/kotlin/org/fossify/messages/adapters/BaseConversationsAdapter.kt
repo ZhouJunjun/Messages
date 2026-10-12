@@ -205,7 +205,12 @@ abstract class BaseConversationsAdapter(
             // service-like (1.1.04 fix): a private message reading "【急】晚上聚餐" used to
             // introduce its row as "急" even though the conversation no longer classifies as a
             // service one.
-            val serviceName = extractServiceName(conversation.snippet)
+            // 1.1.06 fix: the signature has to come from the newest *received* message, never from
+            // the newest message overall - once we reply inside a service thread the snippet is our
+            // own text and the row fell back to the bare number. `serviceSnippet` is filled in by the
+            // provider scan (`scanConversations`) and is empty for threads we only ever wrote to.
+            val serviceSource = conversation.serviceSnippet.ifEmpty { conversation.snippet }
+            val serviceName = extractServiceName(serviceSource)
                 ?.takeIf { isServiceNumber(conversation.phoneNumber) }
 
             // The resolved contact name wins over the `【签名】` extracted from the message body, so

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Mirrors item_conversation.xml on purpose: the starred screen must look like the two
-     conversation lists (avatar + title + 2 line snippet + date + copyable strings). -->
+     conversation lists (avatar + star toggle + title + 2 line snippet + date + copyable strings). -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -43,34 +43,28 @@
             tools:visibility="visible" />
     </FrameLayout>
 
-    <org.fossify.commons.views.MyTextView
-        android:id="@+id/starred_title"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/activity_margin"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textAlignment="viewStart"
-        android:textDirection="locale"
-        android:textSize="@dimen/list_primary_text_size"
-        app:layout_constraintBottom_toTopOf="@id/starred_body"
-        app:layout_constraintEnd_toStartOf="@id/starred_star"
-        app:layout_constraintStart_toEndOf="@id/starred_avatar_holder"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:text="中国移动" />
-
     <!--
-      Star toggle, shown on search-result rows only (1.1.01 spec), parked to the right of the title.
-      Tapping it stars / unstars the message without opening the conversation.
+      Star toggle, to the LEFT of the title (1.1.06 spec). It used to be parked on the right of the
+      title for search-result rows only; both screens that use this layout - the search results and
+      the starred tab - now carry it in the same place, ahead of the title.
 
-      🔴 The star is a text glyph now, not a drawable (1.1.02 second rework): it renders "⭐"
-      (U+2B50) with MyTree-Regular.ttf, the icon font bundled under assets/fonts, and takes exactly
-      the configured title font size - see StarredMessagesAdapter. A glyph carries no size of its
+      Tapping it stars / unstars the message without opening the conversation. On the starred tab a
+      tap unstars, and the row then leaves the list (StarredMessagesAdapter.removeUnstarredFromList).
+
+      🔴 The star is a text glyph, not a drawable (1.1.02 second rework): it renders "⭐" (U+2B50)
+      with MyTree-Regular.ttf, the icon font bundled under assets/fonts, and takes the configured
+      title font size minus two steps - see StarredMessagesAdapter. A glyph carries no size of its
       own, so there is nothing left to measure at runtime: the old doOnLayout/ratio sizing and the
       oscillation it caused are gone, and only the colour tells the two states apart.
 
-      The 6dp padding keeps the touch target comfortable and the gap to the title at the 10dp the
-      spec asks for: marginStart 4dp + the 6dp padding.
+      The 6dp padding keeps the touch target comfortable; marginStart 4dp sits it just off the
+      avatar and the padding on its right end is the gap to the title.
+
+      1.1.06 follow-up: lines 2 and 3 (starred_body, starred_copyables_divider, starred_copyables)
+      left-align with the STAR, not with the title - the star is the leftmost element of the text
+      block, so everything under it shares its left edge. They carry a matching
+      layout_marginStart="6dp" because that padding sits inside the star view: without it the body
+      would start 6dp left of the glyph the user actually sees.
 
       🔴 U+2B50 is an emoji code point and emoji2 is part of the app (commons pulls it in and the
       merged manifest registers androidx.emoji2.text.EmojiCompatInitializer). Left alone, emoji2
@@ -79,36 +73,49 @@
       supported per-view opt-out and is applied while the row is inflated, i.e. before any text is
       set - the adapter repeats it programmatically for recycled rows.
 
-      🔴 The row is a single chain: avatar -> title -> star -> date -> parent. Every view anchors to
-      its left neighbour's end and its right neighbour's start; giving the star an end anchor
-      (`starred_date`) is what keeps the chain closed - without it, title.end <-> star.start is a
-      circular constraint and ConstraintLayout collapses the 0dp-wide title to zero width, which
-      makes the title vanish and parks the star on top of the avatar.
+      🔴 The row is a single chain: avatar -> star -> title -> date -> parent. Every view anchors to
+      its left neighbour's end and its right neighbour's start; every link of that chain must have
+      both anchors or ConstraintLayout reports a circular constraint and collapses the 0dp-wide
+      title to zero width, which makes the title vanish.
     -->
     <TextView
         android:id="@+id/starred_star"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="@dimen/small_margin"
+        android:layout_marginStart="@dimen/small_margin"
         android:clickable="true"
         android:focusable="true"
         android:gravity="center"
         android:includeFontPadding="false"
         android:padding="6dp"
-        android:visibility="gone"
         app:emojiCompatEnabled="false"
         app:layout_constraintBottom_toBottomOf="@id/starred_title"
-        app:layout_constraintEnd_toStartOf="@id/starred_date"
-        app:layout_constraintStart_toEndOf="@id/starred_title"
+        app:layout_constraintEnd_toStartOf="@id/starred_title"
+        app:layout_constraintStart_toEndOf="@id/starred_avatar_holder"
         app:layout_constraintTop_toTopOf="@id/starred_title"
         tools:text="⭐"
         tools:visibility="visible" />
 
     <org.fossify.commons.views.MyTextView
+        android:id="@+id/starred_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textAlignment="viewStart"
+        android:textDirection="locale"
+        android:textSize="@dimen/list_primary_text_size"
+        app:layout_constraintBottom_toTopOf="@id/starred_body"
+        app:layout_constraintEnd_toStartOf="@id/starred_date"
+        app:layout_constraintStart_toEndOf="@id/starred_star"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="中国移动" />
+
+    <org.fossify.commons.views.MyTextView
         android:id="@+id/starred_body"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
         android:layout_marginEnd="@dimen/activity_margin"
         android:ellipsize="end"
         android:maxLines="2"
@@ -117,7 +124,7 @@
         android:textSize="@dimen/normal_text_size"
         app:layout_constraintBottom_toTopOf="@id/starred_copyables_divider"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="@id/starred_title"
+        app:layout_constraintStart_toStartOf="@id/starred_star"
         app:layout_constraintTop_toBottomOf="@id/starred_title"
         tools:text="您的验证码是 1234，请勿泄露。" />
 
@@ -125,10 +132,11 @@
         android:id="@+id/starred_copyables_divider"
         android:layout_width="0dp"
         android:layout_height="0.5dp"
+        android:layout_marginStart="6dp"
         android:layout_marginTop="@dimen/small_margin"
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="@id/starred_title"
+        app:layout_constraintStart_toStartOf="@id/starred_star"
         app:layout_constraintTop_toBottomOf="@id/starred_body" />
 
     <org.fossify.commons.views.MyTextView
@@ -141,7 +149,7 @@
         android:textSize="@dimen/list_tertiary_text_size"
         app:layout_constraintBottom_toBottomOf="@id/starred_title"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/starred_star"
+        app:layout_constraintStart_toEndOf="@id/starred_title"
         app:layout_constraintTop_toTopOf="@id/starred_title"
         tools:text="2026/01/02 12:30" />
 
@@ -149,6 +157,7 @@
         android:id="@+id/starred_copyables"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
         android:layout_marginTop="0dp"
         android:ellipsize="end"
         android:lineSpacingExtra="2dp"
@@ -157,7 +166,7 @@
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="@id/starred_title"
+        app:layout_constraintStart_toStartOf="@id/starred_star"
         app:layout_constraintTop_toBottomOf="@id/starred_copyables_divider"
         tools:text="1234 │ 8830-99"
         tools:visibility="visible" />

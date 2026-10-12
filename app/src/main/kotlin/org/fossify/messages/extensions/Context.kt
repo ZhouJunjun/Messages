@@ -62,7 +62,9 @@ import org.fossify.messages.helpers.MessagingCache
 import org.fossify.messages.helpers.NotificationHelper
 import org.fossify.messages.helpers.SEARCH_RESULTS_LIMIT
 import org.fossify.messages.helpers.ShortcutHelper
+import org.fossify.messages.helpers.extractServiceName
 import org.fossify.messages.helpers.generateRandomId
+import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.interfaces.AttachmentsDao
 import org.fossify.messages.interfaces.ConversationsDao
 import org.fossify.messages.interfaces.DraftsDao
@@ -561,6 +563,9 @@ fun Context.scanConversations(
     val sortOrder = "${Threads.DATE} DESC"
 
     val conversations = ArrayList<Conversation>()
+    // Service threads whose newest message yields no signature - re-checked after the scan,
+    // once, against the body of their newest *received* message (1.1.06 fix).
+    val serviceCandidates = ArrayList<Long>()
     val simpleContactHelper = SimpleContactsHelper(this)
     // All three lookups below only decorate a row. When one of them threw, the whole scan used to
     // be abandoned and the caller then deleted every conversation it did not get back - so a
@@ -668,6 +673,9 @@ fun Context.scanConversations(
                     unreadCount = unreadCount,
                 )
                 conversations.add(conversation)
+                if (isServiceNumber(conversation.phoneNumber) && extractServiceName(snippet) == null) {
+                    serviceCandidates.add(id)
+                }
             } catch (e: Exception) {
                 showErrorToast(e)
                 complete = false
@@ -678,8 +686,56 @@ fun Context.scanConversations(
         complete = false
     }
 
+    // Threads.SNIPPET is direction-agnostic: as soon as we reply inside a service thread the
+    // newest message is our own text, the sender's signature is nowhere in it, and the row fell
+    // back to the bare number. Recover it from the newest *received* message - one extra query
+    // for all the affected threads at once, never one query per thread (1.1.06 fix).
+    if (serviceCandidates.isNotEmpty()) {
+        val inboxBodies: Map<Long, String> = try {
+            getLastInboxBodiesByThread(serviceCandidates)
+        } catch (e: Exception) {
+            showErrorToast(e)
+            emptyMap()
+        }
+        if (inboxBodies.isNotEmpty()) {
+            conversations.forEach { conversation ->
+                inboxBodies[conversation.threadId]?.let { conversation.serviceSnippet = it }
+            }
+        }
+    }
+
     conversations.sortByDescending { it.date }
     return ConversationsScan(conversations, complete)
+}
+
+/**
+ * Body of the newest *received* message of each thread in [threadIds].
+ *
+ * Used to recover the sender's signature for service threads whose newest message happens to
+ * be our own reply (1.1.06 fix): [Threads.SNIPPET] is direction-agnostic and would hand us our
+ * own text instead. One query for all the threads - the cursor is ordered by date ascending, so
+ * the last hit per thread wins.
+ */
+fun Context.getLastInboxBodiesByThread(threadIds: List<Long>): Map<Long, String> {
+    if (threadIds.isEmpty()) {
+        return emptyMap()
+    }
+
+    val result = HashMap<Long, String>(threadIds.size * 2)
+    val selection = "${Sms.THREAD_ID} IN (${threadIds.joinToString(",")}) AND " +
+        "${Sms.TYPE} = ${Sms.MESSAGE_TYPE_INBOX}"
+
+    queryCursor(
+        Sms.CONTENT_URI,
+        arrayOf(Sms.THREAD_ID, Sms.BODY),
+        selection,
+        null,
+        "${Sms.DATE} ASC",
+        false
+    ) { cursor ->
+        result[cursor.getLongValue(Sms.THREAD_ID)] = cursor.getStringValue(Sms.BODY).orEmpty()
+    }
+    return result
 }
 
 private fun Context.queryCursorUnsafe(

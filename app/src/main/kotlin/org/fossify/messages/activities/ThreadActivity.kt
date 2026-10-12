@@ -1104,6 +1104,9 @@ class ThreadActivity : SimpleActivity() {
                 return
             }
 
+            // the very labels the metadata line's SIM badge uses (1.1.06 spec)
+            val simLabels = buildSimLabels(availableSIMs)
+
             currentSIMCardIndex = getProperSimIndex(availableSIMs, numbers)
             binding.messageHolder.threadSelectSimIcon.applyColorFilter(getProperTextColor())
             binding.messageHolder.threadSelectSimIcon.beVisible()
@@ -1113,8 +1116,8 @@ class ThreadActivity : SimpleActivity() {
                 binding.messageHolder.threadSelectSimIcon.setOnClickListener {
                     currentSIMCardIndex = (currentSIMCardIndex + 1) % availableSIMCards.size
                     val currentSIMCard = availableSIMCards[currentSIMCardIndex]
-                    @SuppressLint("SetTextI18n")
-                    binding.messageHolder.threadSelectSimNumber.text = currentSIMCard.id.toString()
+                    binding.messageHolder.threadSelectSimNumber.text =
+                        simLabels[currentSIMCard.subscriptionId] ?: currentSIMCard.id.toString()
                     val currentSubscriptionId = currentSIMCard.subscriptionId
                     numbers.forEach {
                         config.saveUseSIMIdAtNumber(it, currentSubscriptionId)
@@ -1127,9 +1130,9 @@ class ThreadActivity : SimpleActivity() {
                 getProperTextColor().getContrastColor()
             )
             try {
-                @SuppressLint("SetTextI18n")
+                val currentSIMCard = availableSIMCards[currentSIMCardIndex]
                 binding.messageHolder.threadSelectSimNumber.text =
-                    (availableSIMCards[currentSIMCardIndex].id).toString()
+                    simLabels[currentSIMCard.subscriptionId] ?: currentSIMCard.id.toString()
             } catch (e: Exception) {
                 showErrorToast(e)
             }
@@ -1304,14 +1307,8 @@ class ThreadActivity : SimpleActivity() {
         simIdMap[-1] = "?"
         subscriptionManagerCompat().activeSubscriptionInfoList?.let { activeSIMs ->
             // Each card is labelled with its operator name instead of a bare slot digit
-            // (1.1.04 spec). Two cards from the same operator get a slot-number suffix so they
-            // stay distinguishable, e.g. 移动1 / 移动2.
-            val baseNames = activeSIMs.map { carrierShortName(it) }
-            activeSIMs.forEachIndexed { index, subscriptionInfo ->
-                val base = baseNames[index]
-                val label = if (baseNames.count { it == base } > 1) "$base${index + 1}" else base
-                simIdMap[subscriptionInfo.subscriptionId] = label
-            }
+            // (1.1.04 spec); the bottom bar's SIM button shows the very same label (1.1.06 spec).
+            simIdMap.putAll(buildSimLabels(activeSIMs))
         }
 
         var hadUnreadItems = false
@@ -1351,6 +1348,22 @@ class ThreadActivity : SimpleActivity() {
             this.sentStatus = sentStatus
         }
         return items
+    }
+
+    /**
+     * Operator label of every active SIM, keyed by `subscriptionId` (1.1.04 spec), so the message
+     * metadata line's SIM badge and the bottom bar's SIM button name a card identically
+     * (1.1.06 spec). Two cards from the same operator get a slot-number suffix so they stay
+     * distinguishable, e.g. 移动1 / 移动2.
+     */
+    @SuppressLint("MissingPermission")
+    private fun buildSimLabels(activeSIMs: List<SubscriptionInfo>): Map<Int, String> {
+        val baseNames = activeSIMs.map { carrierShortName(it) }
+        return activeSIMs.mapIndexed { index, subscriptionInfo ->
+            val base = baseNames[index]
+            val label = if (baseNames.count { it == base } > 1) "$base${index + 1}" else base
+            subscriptionInfo.subscriptionId to label
+        }.toMap()
     }
 
     /**

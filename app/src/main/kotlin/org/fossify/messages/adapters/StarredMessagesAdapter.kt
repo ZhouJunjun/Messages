@@ -42,7 +42,9 @@ import org.joda.time.DateTime
  *
  * The row is laid out exactly like the conversation lists (coloured avatar, title, two-line
  * snippet, date and the copyable-string row) and follows the same custom-appearance settings,
- * per the 1.0.3 spec.
+ * per the 1.0.3 spec. Every row carries the star toggle to the left of its title: on a search
+ * result it stars / unstars the hit, on the starred tab it unstars it and the row leaves the list
+ * (1.1.06 spec).
  */
 class StarredMessagesAdapter(
     activity: SimpleActivity,
@@ -68,17 +70,11 @@ class StarredMessagesAdapter(
         }
 
     /**
-     * Whether every row shows the star toggle next to its title. Only the search results do - the
-     * starred tab holds nothing but starred messages already (1.1.01 spec).
+     * Whether an unstarred row drops out of the list. True for the starred tab - a row there is a
+     * starred message and nothing else, so unstarring it has to remove it, not just grey the icon out
+     * (1.1.06 spec). False for search results, where a hit stays visible after being unstarred.
      */
-    var showStarToggle: Boolean = false
-        set(value) {
-            if (field != value) {
-                field = value
-                @Suppress("NotifyDataSetChanged")
-                notifyDataSetChanged()
-            }
-        }
+    var removeUnstarredFromList: Boolean = false
 
     /**
      * Ids of the starred messages, resolved by the activity on a background thread so binding a row
@@ -199,40 +195,36 @@ class StarredMessagesAdapter(
                 // the app's default border colour while not (1.1.02 second rework). It is drawn by
                 // the bundled icon font instead of a drawable, so there is no box to measure and no
                 // ratio to apply: the glyph simply follows the title's font size, and the flag is
-                // colour-only again.
-                starredStar.beVisibleIf(showStarToggle)
-                if (showStarToggle) {
-                    val isStarred = starredMessageIds.contains(message.id)
-                    starredStar.apply {
-                        // 🔴 U+2B50 is an emoji code point, and emoji2 is part of the app (commons
-                        // pulls it in and the merged manifest registers
-                        // androidx.emoji2.text.EmojiCompatInitializer). Left alone, emoji2 makes
-                        // this TextView draw the glyph with the *system* emoji font - a coloured
-                        // star that ignores both our typeface and our tint. setEmojiCompatEnabled
-                        // (false) is the supported opt-out: it detaches the emoji transformation
-                        // method / text watcher, so the bundled font draws the glyph. The layout
-                        // carries the same flag via app:emojiCompatEnabled="false", applied at
-                        // inflation; this call is the belt to its braces for recycled rows.
-                        (this as? AppCompatTextView)?.setEmojiCompatEnabled(false)
-                        text = STAR_GLYPH
-                        typeface = starTypeface
-                        // Two font-size steps below the title, per the 1.1.03 spec ("title 字号减 2").
-                        // A glyph has no box of its own, so it just inherits this size - nothing here
-                        // can drift from row to row.
-                        setTextSize(
-                            TypedValue.COMPLEX_UNIT_SP,
-                            (config.homeTitleTextSize - STAR_TO_TITLE_SIZE_STEP).toFloat()
-                        )
-                        setTextColor(
-                            if (isStarred) STAR_FILLED_COLOR
-                            else activity.getColor(org.fossify.commons.R.color.divider_grey)
-                        )
-                        setOnClickListener {
-                            toggleStar(message, holder.bindingAdapterPosition)
-                        }
+                // colour-only again. Since 1.1.06 it sits to the LEFT of the title and shows on every
+                // row of this adapter (search results and the starred tab alike).
+                val isStarred = starredMessageIds.contains(message.id)
+                starredStar.apply {
+                    // 🔴 U+2B50 is an emoji code point, and emoji2 is part of the app (commons
+                    // pulls it in and the merged manifest registers
+                    // androidx.emoji2.text.EmojiCompatInitializer). Left alone, emoji2 makes
+                    // this TextView draw the glyph with the *system* emoji font - a coloured
+                    // star that ignores both our typeface and our tint. setEmojiCompatEnabled
+                    // (false) is the supported opt-out: it detaches the emoji transformation
+                    // method / text watcher, so the bundled font draws the glyph. The layout
+                    // carries the same flag via app:emojiCompatEnabled="false", applied at
+                    // inflation; this call is the belt to its braces for recycled rows.
+                    (this as? AppCompatTextView)?.setEmojiCompatEnabled(false)
+                    text = STAR_GLYPH
+                    typeface = starTypeface
+                    // Two font-size steps below the title, per the 1.1.03 spec ("title 字号减 2").
+                    // A glyph has no box of its own, so it just inherits this size - nothing here
+                    // can drift from row to row.
+                    setTextSize(
+                        TypedValue.COMPLEX_UNIT_SP,
+                        (config.homeTitleTextSize - STAR_TO_TITLE_SIZE_STEP).toFloat()
+                    )
+                    setTextColor(
+                        if (isStarred) STAR_FILLED_COLOR
+                        else activity.getColor(org.fossify.commons.R.color.divider_grey)
+                    )
+                    setOnClickListener {
+                        toggleStar(message, holder.bindingAdapterPosition)
                     }
-                } else {
-                    starredStar.setOnClickListener(null)
                 }
 
                 val copyables = extractCopyableStrings(message.body)
@@ -257,6 +249,10 @@ class StarredMessagesAdapter(
      * Stars / unstars one message straight from the row and flips just that row's icon. Tapping the
      * star must not open the conversation, which is why the icon carries its own click listener.
      *
+     * On the starred tab an unstarred row is dropped from the list rather than dimmed
+     * ([removeUnstarredFromList]); the filtered re-submit keeps the diff - and with it the row
+     * animations and stable ids - doing the removal.
+     *
      * 🔴 The database write MUST leave the main thread: `starred_messages` is a plain Room
      * database without `allowMainThreadQueries()`, so calling it from the click listener throws
      * `IllegalStateException: Cannot access database on the main thread ...` (the toast the user
@@ -271,7 +267,9 @@ class StarredMessagesAdapter(
         }
         onStarToggledListener?.invoke(message.id, !isStarred)
 
-        if (position >= 0) {
+        if (isStarred && removeUnstarredFromList) {
+            submitList(currentList.filterNot { it.id == message.id })
+        } else if (position >= 0) {
             notifyItemChanged(position)
         }
 
