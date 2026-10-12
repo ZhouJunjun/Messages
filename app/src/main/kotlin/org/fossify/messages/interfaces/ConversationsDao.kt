@@ -17,10 +17,22 @@ interface ConversationsDao {
      * has displayable text. A picture-only MMS is mirrored into the local `messages` table with
      * an empty body, and that empty body used to override the stored snippet and blank the row -
      * the stored snippet is the rebuilt one (e.g. "[图片]", 1.0.4 spec).
+     *
+     * `last_inbox_snippet` is the newest *received* body of the same thread, taken straight from
+     * the local table (1.1.08 fix). The row title of a service sender is read out of the body of
+     * its newest received message, and this is the only copy of that body the list can trust:
+     * `Conversation.serviceSnippet` is filled in by the provider scan, but the scan only looks a
+     * body up when the *provider's* thread snippet has no signature - and on some ROMs that
+     * snippet already holds the sender's `【签名】` while the newest local message is our own
+     * reply, so the scan stored nothing and `new_snippet` above then replaced the stored body
+     * with that reply ("R"). Resolving it here keeps the title independent of the scan.
      */
     @Query(
         "SELECT (SELECT body FROM messages WHERE messages.thread_id = conversations.thread_id" +
-            " AND body != '' ORDER BY messages.date DESC LIMIT 1) as new_snippet, * FROM conversations"
+            " AND body != '' ORDER BY messages.date DESC LIMIT 1) as new_snippet, " +
+            "(SELECT body FROM messages WHERE messages.thread_id = conversations.thread_id" +
+            " AND body != '' AND messages.type = 1 AND messages.is_scheduled = 0" +
+            " ORDER BY messages.date DESC LIMIT 1) as last_inbox_snippet, * FROM conversations"
     )
     fun getAllWithLatestSnippet(): List<ConversationWithSnippetOverride>
 

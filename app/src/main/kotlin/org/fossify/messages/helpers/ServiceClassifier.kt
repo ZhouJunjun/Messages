@@ -1,5 +1,7 @@
 package org.fossify.messages.helpers
 
+import org.fossify.messages.models.Conversation
+
 /**
  * Shown in the conversation list / thread metadata when the newest message is a picture-only
  * MMS: the telephony provider's own snippet for such a message is not displayable text, which
@@ -88,6 +90,45 @@ fun stripRedundantSignature(snippet: String, title: String): String {
     }
 
     return snippet.substring(match.range.last + 1).trimStart()
+}
+
+/**
+ * The `【签名】` a conversation should be *displayed* under, or null when the row already carries a
+ * real name (a saved contact, or a user-set custom title) or when its number is not service-like.
+ *
+ * 🔴 The signature is read from [Conversation.serviceSnippet] - the body of the newest *received*
+ * message - and only falls back to [Conversation.snippet] when that is empty. [Conversation.snippet]
+ * is direction-agnostic: the moment we reply inside a service thread it holds our own text ("R",
+ * "退订"…), the signature is nowhere in it and the row fell back to the bare number. Filling
+ * `serviceSnippet` in during the provider scan was not enough on its own, because the list is
+ * rebuilt from the database where that field did not exist (1.1.08 fix).
+ *
+ * Shared by the conversation list row (`BaseConversationsAdapter`) and the thread toolbar
+ * (`ThreadActivity.setupThreadTitle`), so both name a service conversation identically.
+ */
+fun Conversation.serviceDisplayName(): String? {
+    if (AvatarColors.isRealName(title)) {
+        return null
+    }
+    if (!isServiceNumber(phoneNumber)) {
+        return null
+    }
+    return extractServiceName(serviceSnippet.ifEmpty { snippet })
+}
+
+/**
+ * True when this row's `【签名】` still has to be read out of the provider, i.e. the row is a
+ * service-like number with no real name and `serviceSnippet` has not been filled in yet.
+ *
+ * Only the thread screen needs this: it can be opened before the conversation list's provider scan
+ * has run (a notification tap, or the first visit after the row was migrated from an older
+ * database), and on its own it has no way to tell the sender's newest received message apart from
+ * our own reply - so it resolves and stores the body once, on demand.
+ */
+fun Conversation.needsServiceSignatureLookup(): Boolean {
+    return serviceSnippet.isEmpty() &&
+        !AvatarColors.isRealName(title) &&
+        isServiceNumber(phoneNumber)
 }
 
 /**

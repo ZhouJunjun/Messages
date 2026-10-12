@@ -2,10 +2,20 @@ package org.fossify.messages.models
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * `serviceSnippet` is a real column (1.1.08), not an in-memory extra. It holds the body of the
+ * newest *received* message of the thread, which is where the sender's `【签名】` lives.
+ *
+ * It used to be a `@Ignore`'d property filled in during the provider scan - and that silently did
+ * nothing: the list is always rebuilt from `conversationsDB.getAll()`, so the scan's value was
+ * dropped on the way to the UI and a service thread we had replied to kept showing its bare number
+ * as the title. `snippet` cannot stand in for it: that one is direction-agnostic, so as soon as we
+ * reply inside a service thread it holds our own text ("R", "退订"…) and the signature is gone
+ * (1.1.08 fix - reported twice, 1.1.06 and again on 1.1.07).
+ */
 @Entity(tableName = "conversations", indices = [(Index(value = ["thread_id"], unique = true))])
 data class Conversation(
     @PrimaryKey @ColumnInfo(name = "thread_id") var threadId: Long,
@@ -19,23 +29,9 @@ data class Conversation(
     @ColumnInfo(name = "is_scheduled") var isScheduled: Boolean = false,
     @ColumnInfo(name = "uses_custom_title") var usesCustomTitle: Boolean = false,
     @ColumnInfo(name = "unread_count") var unreadCount: Int = 0,
+    /** Body of the newest received message; see the class KDoc. */
+    @ColumnInfo(name = "service_snippet") var serviceSnippet: String = "",
 ) {
-
-    /**
-     * Body of the newest *received* message of this thread, filled in while the provider is scanned.
-     *
-     * Not persisted (`@Ignore`), deliberately. [snippet] is the newest message of *either* direction,
-     * so as soon as we reply inside a service thread the snippet becomes our own text: the sender's
-     * `【签名】` is gone and the row fell back to showing the bare number (1.1.06 fix). The display
-     * layer reads the `【签名】` from here instead and falls back to [snippet] when this is empty
-     * (threads we never received anything in, or rows rebuilt from the database).
-     *
-     * Declared in the class body rather than as a constructor parameter so Room never has to reason
-     * about a non-column constructor argument; the trade-off is that `copy()` does not carry it -
-     * harmless, since every provider scan fills it in again.
-     */
-    @Ignore
-    var serviceSnippet: String = ""
 
     companion object {
         fun areItemsTheSame(old: Conversation, new: Conversation): Boolean {

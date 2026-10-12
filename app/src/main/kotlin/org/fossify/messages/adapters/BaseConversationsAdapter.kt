@@ -33,10 +33,9 @@ import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.getAllDrafts
 import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.extractCopyableStrings
-import org.fossify.messages.helpers.extractServiceName
 import org.fossify.messages.helpers.formatMessageDateTime
-import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.helpers.sanitizeForDisplay
+import org.fossify.messages.helpers.serviceDisplayName
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.helpers.stripRedundantSignature
 import org.fossify.messages.models.Conversation
@@ -206,13 +205,12 @@ abstract class BaseConversationsAdapter(
             // service-like (1.1.04 fix): a private message reading "【急】晚上聚餐" used to
             // introduce its row as "急" even though the conversation no longer classifies as a
             // service one.
-            // 1.1.06 fix: the signature has to come from the newest *received* message, never from
-            // the newest message overall - once we reply inside a service thread the snippet is our
-            // own text and the row fell back to the bare number. `serviceSnippet` is filled in by the
-            // provider scan (`scanConversations`) and is empty for threads we only ever wrote to.
-            val serviceSource = conversation.serviceSnippet.ifEmpty { conversation.snippet }
-            val serviceName = extractServiceName(serviceSource)
-                ?.takeIf { isServiceNumber(conversation.phoneNumber) }
+            // 1.1.06 / 1.1.08 fix: the signature has to come from the newest *received* message,
+            // never from the newest message overall - once we reply inside a service thread the
+            // snippet is our own text and the row fell back to the bare number. That body is
+            // `serviceSnippet`, persisted by the provider scan; the helper owns the whole rule so
+            // this row and the thread toolbar always agree.
+            val serviceName = conversation.serviceDisplayName()
 
             // The resolved contact name wins over the `【签名】` extracted from the message body, so
             // a row reads exactly like its thread toolbar does - e.g. "中国联通" instead of

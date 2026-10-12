@@ -79,6 +79,7 @@ import org.fossify.messages.extensions.updateLastConversationMessage
 import org.fossify.messages.helpers.SEARCHED_MESSAGE_ID
 import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.isServiceConversation
+import org.fossify.messages.helpers.serviceDisplayName
 import org.fossify.messages.helpers.THREAD_ID
 import org.fossify.messages.helpers.THREAD_TITLE
 import org.fossify.messages.models.Conversation
@@ -1144,7 +1145,12 @@ class MainActivity : SimpleActivity() {
         Intent(this, ThreadActivity::class.java).apply {
             val conversation = any as Conversation
             putExtra(THREAD_ID, conversation.threadId)
-            putExtra(THREAD_TITLE, conversation.title)
+            // The toolbar shows this until the thread loads; hand it the same name the row shows,
+            // so a service conversation does not flash its bare number (1.1.08 fix).
+            putExtra(
+                THREAD_TITLE,
+                conversation.serviceDisplayName() ?: conversation.title
+            )
             startActivity(this)
         }
     }

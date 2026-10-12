@@ -62,7 +62,6 @@ import org.fossify.messages.helpers.MessagingCache
 import org.fossify.messages.helpers.NotificationHelper
 import org.fossify.messages.helpers.SEARCH_RESULTS_LIMIT
 import org.fossify.messages.helpers.ShortcutHelper
-import org.fossify.messages.helpers.extractServiceName
 import org.fossify.messages.helpers.generateRandomId
 import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.interfaces.AttachmentsDao
@@ -563,8 +562,9 @@ fun Context.scanConversations(
     val sortOrder = "${Threads.DATE} DESC"
 
     val conversations = ArrayList<Conversation>()
-    // Service threads whose newest message yields no signature - re-checked after the scan,
-    // once, against the body of their newest *received* message (1.1.06 fix).
+    // Service threads whose newest *received* message is looked up after the scan, so the sender's
+    // `【签名】` is captured before the snippet gets replaced by our own reply (1.1.06 fix, corrected
+    // in 1.1.08 - see the guard below).
     val serviceCandidates = ArrayList<Long>()
     val simpleContactHelper = SimpleContactsHelper(this)
     // All three lookups below only decorate a row. When one of them threw, the whole scan used to
@@ -673,7 +673,16 @@ fun Context.scanConversations(
                     unreadCount = unreadCount,
                 )
                 conversations.add(conversation)
-                if (isServiceNumber(conversation.phoneNumber) && extractServiceName(snippet) == null) {
+                // Every service-like thread has its newest *received* body recorded, unconditionally.
+                //
+                // 🔴 Do NOT gate this on `extractServiceName(snippet) == null` (the 1.1.06 shape).
+                // That reads the signature off the provider's thread snippet, but the list does not
+                // display that snippet - it replaces it with our own newest local message, so the
+                // moment we reply inside a service thread the body the row shows is "R" and the
+                // signature is gone. On this ROM the provider snippet even keeps the sender's
+                // `【签名】` after our reply, so the old gate skipped exactly the thread that needed
+                // the lookup and `serviceSnippet` stayed empty (reported on 1.1.06, 1.1.07, 1.1.08).
+                if (isServiceNumber(conversation.phoneNumber)) {
                     serviceCandidates.add(id)
                 }
             } catch (e: Exception) {

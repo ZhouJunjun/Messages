@@ -127,12 +127,14 @@ import org.fossify.messages.extensions.filterNotInByKey
 import org.fossify.messages.extensions.getAddresses
 import org.fossify.messages.extensions.getDefaultKeyboardHeight
 import org.fossify.messages.extensions.getFileSizeFromUri
+import org.fossify.messages.extensions.getLastInboxBodiesByThread
 import org.fossify.messages.extensions.getMessages
 import org.fossify.messages.extensions.getSmsDraft
 import org.fossify.messages.extensions.getThreadId
 import org.fossify.messages.extensions.getThreadParticipants
 import org.fossify.messages.extensions.getThreadTitle
 import org.fossify.messages.extensions.indexOfFirstOrNull
+import org.fossify.messages.extensions.insertOrUpdateConversation
 import org.fossify.messages.extensions.isGifMimeType
 import org.fossify.messages.extensions.isImageMimeType
 import org.fossify.messages.extensions.launchConversationDetails
@@ -171,9 +173,11 @@ import org.fossify.messages.helpers.THREAD_NUMBER
 import org.fossify.messages.helpers.THREAD_TEXT
 import org.fossify.messages.helpers.THREAD_TITLE
 import org.fossify.messages.helpers.generateRandomId
+import org.fossify.messages.helpers.needsServiceSignatureLookup
 import org.fossify.messages.extensions.getStarredMessageIds
 import org.fossify.messages.helpers.refreshConversations
 import org.fossify.messages.helpers.refreshMessages
+import org.fossify.messages.helpers.serviceDisplayName
 import org.fossify.messages.messaging.cancelScheduleSendPendingIntent
 import org.fossify.messages.messaging.isLongMmsMessage
 import org.fossify.messages.messaging.isShortCodeWithLetters
@@ -860,7 +864,23 @@ class ThreadActivity : SimpleActivity() {
 
     private fun setupConversation() {
         ensureBackgroundThread {
-            conversation = conversationsDB.getConversationWithThreadId(threadId)
+            val conv = conversationsDB.getConversationWithThreadId(threadId)
+            // 1.1.08: the thread screen is reachable before the conversation list's provider scan
+            // has stored the newest received message (a notification tap, or the first visit right
+            // after the row was migrated from an older database). Without that body a service
+            // thread we had replied to cannot resolve its `【签名】` and titles itself with the bare
+            // number, so read it out of the provider once and keep it.
+            if (conv != null && conv.needsServiceSignatureLookup()) {
+                val body = getLastInboxBodiesByThread(listOf(conv.threadId))[conv.threadId]
+                if (!body.isNullOrEmpty()) {
+                    conv.serviceSnippet = body
+                    runCatching { insertOrUpdateConversation(conv) }
+                }
+            }
+            conversation = conv
+            if (conv != null) {
+                runOnUiThread { setupThreadTitle() }
+            }
         }
     }
 
@@ -1072,7 +1092,11 @@ class ThreadActivity : SimpleActivity() {
     }
 
     private fun setupThreadTitle() {
-        val title = conversation?.title
+        // A service thread we have replied to has no `【签名】` in its newest message (that is our
+        // own reply), so `conversation.title` is just the bare number: the toolbar has to take the
+        // signature from the newest *received* message, exactly like the conversation list row does
+        // (1.1.08 fix).
+        val title = conversation?.serviceDisplayName() ?: conversation?.title
         binding.threadToolbar.title = if (!title.isNullOrEmpty()) {
             title
         } else {

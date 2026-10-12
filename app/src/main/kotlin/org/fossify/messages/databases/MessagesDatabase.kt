@@ -31,7 +31,7 @@ import org.fossify.messages.models.StarredMessage
         StarredMessage::class,
         Draft::class
     ],
-    version = 12
+    version = 13
 )
 @TypeConverters(Converters::class)
 abstract class MessagesDatabase : RoomDatabase() {
@@ -72,6 +72,7 @@ abstract class MessagesDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_9_10)
                             .addMigrations(MIGRATION_10_11)
                             .addMigrations(MIGRATION_11_12)
+                            .addMigrations(MIGRATION_12_13)
                             .build()
                     }
                 }
@@ -214,6 +215,19 @@ abstract class MessagesDatabase : RoomDatabase() {
                     execSQL("CREATE TABLE IF NOT EXISTS `starred_messages` (`id` INTEGER NOT NULL PRIMARY KEY, `starred_ts` INTEGER NOT NULL)")
                     execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_starred_messages_id` ON `starred_messages` (`id`)")
                 }
+            }
+        }
+
+        // persists the body of the newest *received* message of a thread, which is where a service
+        // sender's `【签名】` lives (1.1.08 fix). It was an `@Ignore`'d in-memory field before, so
+        // every `conversationsDB.getAll()` dropped it and a service thread we had replied to fell
+        // back to showing its bare number as the title. Existing rows start out empty; the next
+        // provider scan fills them in.
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE conversations ADD COLUMN service_snippet TEXT NOT NULL DEFAULT ''"
+                )
             }
         }
     }
