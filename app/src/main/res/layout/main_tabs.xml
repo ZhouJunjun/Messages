@@ -6,13 +6,20 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
+    <!--
+      The row itself carries 7dp of vertical padding on top of each tab's own 4dp (@dimen/
+      small_margin), so the strip gets room to breathe between the status bar and the search box
+      below it (1.1.03 spec: "tab 行加上下各 6~8dp padding").
+    -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="@dimen/medium_margin"
-        android:paddingEnd="@dimen/medium_margin">
+        android:paddingTop="7dp"
+        android:paddingEnd="@dimen/medium_margin"
+        android:paddingBottom="7dp">
 
         <!--
           No `?selectableItemBackgroundBorderless` on the tabs: its circular ripple was the

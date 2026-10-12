@@ -202,9 +202,13 @@ class StarredMessagesAdapter(
                         (this as? AppCompatTextView)?.setEmojiCompatEnabled(false)
                         text = STAR_GLYPH
                         typeface = starTypeface
-                        // Exactly the configured title font size, per spec - the glyph inherits it,
-                        // so nothing here can drift from row to row.
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeTitleTextSize.toFloat())
+                        // Two font-size steps below the title, per the 1.1.03 spec ("title 字号减 2").
+                        // A glyph has no box of its own, so it just inherits this size - nothing here
+                        // can drift from row to row.
+                        setTextSize(
+                            TypedValue.COMPLEX_UNIT_SP,
+                            (config.homeTitleTextSize - STAR_TO_TITLE_SIZE_STEP).toFloat()
+                        )
                         setTextColor(
                             if (isStarred) STAR_FILLED_COLOR
                             else activity.getColor(org.fossify.commons.R.color.divider_grey)
@@ -291,5 +295,8 @@ class StarredMessagesAdapter(
 
         /** The glyph the font above is built for - a text star, tinted per state rather than painted. */
         private const val STAR_GLYPH = "\u2B50"
+
+        /** 1.1.03 spec: the star sits two font-size steps below the title. */
+        private const val STAR_TO_TITLE_SIZE_STEP = 2
     }
 }
