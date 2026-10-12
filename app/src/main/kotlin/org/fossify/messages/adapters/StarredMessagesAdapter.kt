@@ -6,10 +6,8 @@ import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.Menu
 import android.view.ViewGroup
-import androidx.core.view.doOnLayout
-import androidx.core.view.updateLayoutParams
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.DiffUtil
-import kotlin.math.roundToInt
 import org.fossify.commons.adapters.MyRecyclerViewListAdapter
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
@@ -86,6 +84,14 @@ class StarredMessagesAdapter(
      * never touches the database (1.1.01 spec).
      */
     var starredMessageIds: Set<Long> = emptySet()
+
+    /**
+     * The icon font that draws the star glyph, parsed once and reused: `createFromAsset()` reloads
+     * the file on every call and rows are re-bound while scrolling (1.1.02 second rework).
+     */
+    private val starTypeface: Typeface by lazy {
+        Typeface.createFromAsset(activity.assets, STAR_FONT_ASSET)
+    }
 
     override fun getActionMenuId() = 0
 
@@ -175,17 +181,31 @@ class StarredMessagesAdapter(
                     }
                 }
 
-                // Star toggle: solid amber while starred, hollow with the generic border colour
-                // while not (1.1.01 spec).
+                // Star toggle: one and the same "⭐" glyph in both states - amber while starred,
+                // the app's default border colour while not (1.1.02 second rework). It is drawn by
+                // the bundled icon font instead of a drawable, so there is no box to measure and no
+                // ratio to apply: the glyph simply follows the title's font size, and the flag is
+                // colour-only again.
                 starredStar.beVisibleIf(showStarToggle)
                 if (showStarToggle) {
                     val isStarred = starredMessageIds.contains(message.id)
                     starredStar.apply {
-                        setImageResource(
-                            if (isStarred) R.drawable.ic_star_filled_vector
-                            else R.drawable.ic_star_outline_vector
-                        )
-                        imageTintList = ColorStateList.valueOf(
+                        // 🔴 U+2B50 is an emoji code point, and emoji2 is part of the app (commons
+                        // pulls it in and the merged manifest registers
+                        // androidx.emoji2.text.EmojiCompatInitializer). Left alone, emoji2 makes
+                        // this TextView draw the glyph with the *system* emoji font - a coloured
+                        // star that ignores both our typeface and our tint. setEmojiCompatEnabled
+                        // (false) is the supported opt-out: it detaches the emoji transformation
+                        // method / text watcher, so the bundled font draws the glyph. The layout
+                        // carries the same flag via app:emojiCompatEnabled="false", applied at
+                        // inflation; this call is the belt to its braces for recycled rows.
+                        (this as? AppCompatTextView)?.setEmojiCompatEnabled(false)
+                        text = STAR_GLYPH
+                        typeface = starTypeface
+                        // Exactly the configured title font size, per spec - the glyph inherits it,
+                        // so nothing here can drift from row to row.
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeTitleTextSize.toFloat())
+                        setTextColor(
                             if (isStarred) STAR_FILLED_COLOR
                             else activity.getColor(org.fossify.commons.R.color.divider_grey)
                         )
@@ -193,7 +213,6 @@ class StarredMessagesAdapter(
                             toggleStar(message, holder.bindingAdapterPosition)
                         }
                     }
-                    applyStarSize()
                 } else {
                     starredStar.setOnClickListener(null)
                 }
@@ -214,33 +233,6 @@ class StarredMessagesAdapter(
             }
         }
         bindViewHolder(holder)
-    }
-
-    /**
-     * 🔴 The star stands as tall as the title, and the title's size is user configurable
-     * (Custom appearance -> Home message title size), so the glyph height is derived from the
-     * title's measured height at runtime instead of being hard-coded (1.1.02 spec).
-     *
-     * `doOnLayout` is deliberate: `setTextSize()` only *requests* a layout, so until the next
-     * layout pass `starredTitle.height` still holds the previous bind's value - reading it
-     * straight away would size the star off a stale measurement.
-     */
-    private fun ItemStarredMessageBinding.applyStarSize() {
-        starredTitle.doOnLayout {
-            val titleHeight = starredTitle.height
-            if (titleHeight <= 0) {
-                return@doOnLayout
-            }
-
-            // `titleHeight` is the line box (roughly 1.3x the glyphs); the star should match the
-            // glyph height, hence the ratio. The 6dp padding is kept so the touch target stays
-            // comfortable and the visual gap to the title remains the 10dp the spec asks for.
-            val glyph = (titleHeight * STAR_TO_TITLE_RATIO).roundToInt()
-            val box = glyph + starredStar.paddingTop + starredStar.paddingBottom
-            if (starredStar.layoutParams.width != box) {
-                starredStar.updateLayoutParams<ViewGroup.LayoutParams> { width = box; height = box }
-            }
-        }
     }
 
     /**
@@ -291,13 +283,13 @@ class StarredMessagesAdapter(
         /** Read snippets are dimmed the same way the conversation rows do it (1.0.4 spec). */
         private const val READ_SNIPPET_ALPHA = 0.7f
 
-        /** Solid star colour of a starred search result (1.1.01 spec). */
+        /** Star colour of a starred search result (1.1.01 spec); unstarred uses the border grey. */
         private const val STAR_FILLED_COLOR = 0xFFFFD600.toInt()
 
-        /**
-         * Converts the title's measured line-box height into the glyph height the star should
-         * match (~1.3x the glyphs at the default font, so the glyph is ~76% of the line box).
-         */
-        private const val STAR_TO_TITLE_RATIO = 0.76f
+        /** Icon font in `app/src/main/assets/`, holding the single U+2B50 star glyph (1.1.02 rework). */
+        private const val STAR_FONT_ASSET = "fonts/MyTree-Regular.ttf"
+
+        /** The glyph the font above is built for - a text star, tinted per state rather than painted. */
+        private const val STAR_GLYPH = "\u2B50"
     }
 }

@@ -107,6 +107,10 @@ android {
     androidResources {
         @Suppress("UnstableApiUsage")
         generateLocaleConfig = true
+        // MyTree-Regular.ttf - the icon font that draws the star glyph - ships under
+        // app/src/main/assets/. Keep it uncompressed so Typeface.createFromAsset() can map the
+        // file instead of inflating it on every parse, and so it stays visible in the APK listing.
+        noCompress.add("ttf")
     }
 
     tasks.withType<KotlinCompile> {

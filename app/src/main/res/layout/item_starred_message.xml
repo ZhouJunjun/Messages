@@ -63,11 +63,21 @@
       Star toggle, shown on search-result rows only (1.1.01 spec), parked to the right of the title.
       Tapping it stars / unstars the message without opening the conversation.
 
-      🔴 Sizing (1.1.02 rework): the box size is applied at runtime from the title's measured
-      height - see StarredMessagesAdapter.applyStarSize(). With the 6dp padding the glyph ends up as
-      tall as the title's text and keeps tracking the configurable title font size; the 24dp below is
-      only a first-frame fallback. The gap to the title is measured glyph-to-text, not box-to-box:
-      marginStart 4dp + the 6dp padding = the 10dp the spec asks for.
+      🔴 The star is a text glyph now, not a drawable (1.1.02 second rework): it renders "⭐"
+      (U+2B50) with MyTree-Regular.ttf, the icon font bundled under assets/fonts, and takes exactly
+      the configured title font size - see StarredMessagesAdapter. A glyph carries no size of its
+      own, so there is nothing left to measure at runtime: the old doOnLayout/ratio sizing and the
+      oscillation it caused are gone, and only the colour tells the two states apart.
+
+      The 6dp padding keeps the touch target comfortable and the gap to the title at the 10dp the
+      spec asks for: marginStart 4dp + the 6dp padding.
+
+      🔴 U+2B50 is an emoji code point and emoji2 is part of the app (commons pulls it in and the
+      merged manifest registers androidx.emoji2.text.EmojiCompatInitializer). Left alone, emoji2
+      wraps this TextView so the glyph ends up drawn by the *system* emoji font: a coloured star
+      that ignores both the bundled typeface and the tint. `app:emojiCompatEnabled="false"` is the
+      supported per-view opt-out and is applied while the row is inflated, i.e. before any text is
+      set - the adapter repeats it programmatically for recycled rows.
 
       🔴 The row is a single chain: avatar -> title -> star -> date -> parent. Every view anchors to
       its left neighbour's end and its right neighbour's start; giving the star an end anchor
@@ -75,22 +85,24 @@
       circular constraint and ConstraintLayout collapses the 0dp-wide title to zero width, which
       makes the title vanish and parks the star on top of the avatar.
     -->
-    <ImageView
+    <TextView
         android:id="@+id/starred_star"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_marginStart="4dp"
         android:layout_marginEnd="@dimen/small_margin"
         android:clickable="true"
         android:focusable="true"
+        android:gravity="center"
+        android:includeFontPadding="false"
         android:padding="6dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_star_outline_vector"
         android:visibility="gone"
+        app:emojiCompatEnabled="false"
         app:layout_constraintBottom_toBottomOf="@id/starred_title"
         app:layout_constraintEnd_toStartOf="@id/starred_date"
         app:layout_constraintStart_toEndOf="@id/starred_title"
         app:layout_constraintTop_toTopOf="@id/starred_title"
+        tools:text="⭐"
         tools:visibility="visible" />
 
     <org.fossify.commons.views.MyTextView
