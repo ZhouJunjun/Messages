@@ -26,17 +26,55 @@
         android:gravity="start"
         android:orientation="vertical">
 
-        <org.fossify.commons.views.MyTextView
-            android:id="@+id/thread_message_metadata"
+        <!--
+          The metadata row (1.1.05 spec): the per-message star toggle rides on this line, 10dp
+          from the text - the same gap the metadata parts (SIM badge, sender number, timestamp)
+          keep between themselves. A received message carries the star after the text, a sent
+          one before it; only one slot is ever visible. The row is wrap_content, so the
+          wrapper's gravity (set in the adapter) aligns it to the side the bubble grows from.
+        -->
+        <LinearLayout
+            android:id="@+id/thread_message_metadata_holder"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="@dimen/tiny_margin"
-            android:drawablePadding="8dp"
-            android:textSize="@dimen/smaller_text_size"
-            tools:text="[1] 10086 26年1月2日 12:30" />
+            android:orientation="horizontal">
 
-        <!-- the bubble carries the background and holds the attachments, the body and the
-             copyable-string row -->
+            <TextView
+                android:id="@+id/thread_message_star_start"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:includeFontPadding="false"
+                android:visibility="gone"
+                app:emojiCompatEnabled="false"
+                tools:text="⭐"
+                tools:ignore="SelectableText" />
+
+            <org.fossify.commons.views.MyTextView
+                android:id="@+id/thread_message_metadata"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/tiny_margin"
+                android:drawablePadding="8dp"
+                android:textSize="@dimen/smaller_text_size"
+                tools:text="[1] 10086 26年1月2日 12:30" />
+
+            <TextView
+                android:id="@+id/thread_message_star_end"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:includeFontPadding="false"
+                android:visibility="gone"
+                app:emojiCompatEnabled="false"
+                tools:text="⭐"
+                tools:ignore="SelectableText" />
+        </LinearLayout>
+
+        <!--
+          the bubble carries the background and holds the attachments, the body and the
+          copyable-string row
+        -->
         <LinearLayout
             android:id="@+id/thread_message_bubble"
             android:layout_width="wrap_content"

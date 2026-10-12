@@ -23,8 +23,9 @@ interface MessagesDao {
     @Query("SELECT * FROM messages WHERE is_scheduled = 1")
     fun getAllScheduledMessages(): List<Message>
 
-    @Query("SELECT messages.* FROM messages INNER JOIN starred_messages ON messages.id = starred_messages.id ORDER BY starred_messages.starred_ts DESC")
-    fun getStarredMessages(): List<Message>
+    // NOTE: the starred query used to INNER JOIN this table, but the table is only a partial
+    // cache - starred ids are resolved against the telephony store in
+    // Context.getStarredMessages() instead (1.1.05 fix).
 
     @Query("SELECT * FROM messages WHERE thread_id = :threadId")
     fun getThreadMessages(threadId: Long): List<Message>

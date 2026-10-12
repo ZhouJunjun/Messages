@@ -27,6 +27,7 @@ import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.extractCopyableStrings
 import org.fossify.messages.helpers.extractServiceName
 import org.fossify.messages.helpers.formatMessageDateTime
+import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.models.Message
@@ -86,6 +87,14 @@ class StarredMessagesAdapter(
     var starredMessageIds: Set<Long> = emptySet()
 
     /**
+     * Notifies the activity of every star toggle so the *activity's* id set stays the single
+     * source of truth. Without this, the next `refreshPage` pushed the activity's stale set back
+     * into this adapter and the row's star icon reverted even though the database was updated
+     * (1.1.04 fix, review A1).
+     */
+    var onStarToggledListener: ((messageId: Long, starred: Boolean) -> Unit)? = null
+
+    /**
      * The icon font that draws the star glyph, parsed once and reused: `createFromAsset()` reloads
      * the file on every call and rows are re-bound while scrolling (1.1.02 second rework).
      */
@@ -124,7 +133,12 @@ class StarredMessagesAdapter(
 
                 val config = activity.config
                 val sender = message.senderName.ifEmpty { message.senderPhoneNumber }
+                // The `【签名】` is only a title candidate for senders whose number is actually
+                // service-like: with the 1.1.04 classifier a private message reading "【急】晚上
+                // 聚餐" no longer files its thread under the service tab, so its row must not
+                // introduce itself as "急" either.
                 val serviceName = extractServiceName(message.body)
+                    ?.takeIf { isServiceNumber(message.senderPhoneNumber) }
 
                 // Same precedence as the conversation lists: contact name, then the `【签名】`,
                 // then the raw number, so all three tabs name a sender identically (1.0.7 spec).
@@ -255,6 +269,7 @@ class StarredMessagesAdapter(
         } else {
             starredMessageIds + message.id
         }
+        onStarToggledListener?.invoke(message.id, !isStarred)
 
         if (position >= 0) {
             notifyItemChanged(position)

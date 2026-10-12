@@ -299,6 +299,34 @@ fun Context.searchMessages(text: String, limit: Int = SEARCH_RESULTS_LIMIT): Arr
         )
     }
 
+    // MMS bodies live in the parts table, not in the header row the SMS query reads, so the
+    // search above never saw them: a term the user knew they had sent inside a picture message
+    // simply returned nothing (1.1.04 fix, review M3). Resolve matching text parts first, then
+    // load each hit as a full message through the regular MMS code path.
+    try {
+        val partUri = if (isQPlus()) Mms.Part.CONTENT_URI else "content://mms/part".toUri()
+        val mmsIds = ArrayList<Long>()
+        queryCursor(
+            uri = partUri,
+            projection = arrayOf(Mms.Part.MSG_ID),
+            selection = "${Mms.Part.CONTENT_TYPE} = ? AND ${Mms.Part.TEXT} LIKE ?",
+            selectionArgs = arrayOf("text/plain", "%$text%"),
+            sortOrder = "${Mms.Part.MSG_ID} DESC LIMIT $limit",
+            showErrors = false
+        ) { cursor ->
+            mmsIds.add(cursor.getLongValue(Mms.Part.MSG_ID))
+        }
+
+        mmsIds.distinct().forEach { mmsId ->
+            getMMS(messageId = mmsId).firstOrNull()?.let { mmsMessage ->
+                if (mmsMessage.body.contains(text, ignoreCase = true)) {
+                    messages.add(mmsMessage)
+                }
+            }
+        }
+    } catch (_: Exception) {
+    }
+
     return messages
 }
 
@@ -308,6 +336,7 @@ fun Context.getMMS(
     sortOrder: String? = null,
     dateFrom: Int = -1,
     uri: Uri = Mms.CONTENT_URI,
+    messageId: Long? = null,
 ): ArrayList<Message> {
     val projection = arrayOf(
         Mms._ID,
@@ -322,7 +351,12 @@ fun Context.getMMS(
     var selection: String? = null
     var selectionArgs: Array<String>? = null
 
-    if (threadId == null && dateFrom != -1) {
+    if (messageId != null) {
+        // a single MMS by id - used by the search, which resolves hits from the parts table
+        // (1.1.04 fix, review M3)
+        selection = "${Mms._ID} = ?"
+        selectionArgs = arrayOf(messageId.toString())
+    } else if (threadId == null && dateFrom != -1) {
         // Should not multiply 1000 here, because date in mms's database is different from sms's.
         selection = "${Sms.DATE} < ${dateFrom.toLong()}"
     } else if (threadId != null && dateFrom == -1) {
@@ -1059,6 +1093,17 @@ fun Context.deleteConversation(threadId: Long) {
 
     conversationsDB.deleteThreadId(threadId)
     messagesDB.deleteThreadMessages(threadId)
+
+    // The thread's starred rows must go with it: they used to survive as orphans, so
+    // `getStarredMessageIds()` kept returning ids of messages that no longer exist (1.1.04
+    // fix, review C1). The local table is the only star store, so reading the cached ids first
+    // is enough; a thread that was never opened has no cached rows and no stars either.
+    try {
+        unstarMessages(messagesDB.getThreadMessages(threadId).map { it.id })
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+
     MessagingCache.participantsCache.remove(threadId)
 
     if (config.customNotifications.contains(threadId.toString())) {
@@ -1104,8 +1149,87 @@ fun Context.getStarredMessageIds(): Set<Long> {
     return starredMessagesDB.getAllIds().toHashSet()
 }
 
+/**
+ * Resolves every starred id against the telephony store - NOT against the local `messages`
+ * table. That table is a partial cache (emptied on upgrades, re-populated only for threads the
+ * user actually opens), so the old INNER JOIN returned just the handful of starred messages
+ * that happened to sit in the cache: 5 stars in one thread showed up as 2 rows (1.1.05 fix).
+ *
+ * The `starred_messages` table stores a bare id with no SMS/MMS flag, so ids the SMS query
+ * does not resolve are retried through the regular MMS path. Result is sorted by message time,
+ * newest first (1.1.05 spec).
+ */
 fun Context.getStarredMessages(): List<Message> {
-    return messagesDB.getStarredMessages()
+    val starredIds = starredMessagesDB.getAllIds()
+    if (starredIds.isEmpty()) {
+        return emptyList()
+    }
+
+    val messages = ArrayList<Message>()
+    val projection = arrayOf(
+        Sms._ID,
+        Sms.BODY,
+        Sms.TYPE,
+        Sms.ADDRESS,
+        Sms.DATE,
+        Sms.READ,
+        Sms.THREAD_ID,
+        Sms.SUBSCRIPTION_ID,
+        Sms.STATUS
+    )
+    val selection = "${Sms._ID} IN (${starredIds.joinToString(",")})"
+
+    try {
+        queryCursor(Sms.CONTENT_URI, projection, selection, null, "${Sms.DATE} DESC", showErrors = true) { cursor ->
+            val senderNumber = cursor.getStringValue(Sms.ADDRESS).orEmpty()
+            val namePhoto = getNameAndPhotoFromPhoneNumber(senderNumber)
+            val phoneNumber = PhoneNumber(senderNumber, 0, "", senderNumber)
+            val participants = arrayListOf(
+                SimpleContact(
+                    rawId = 0,
+                    contactId = 0,
+                    name = namePhoto.name,
+                    photoUri = namePhoto.photoUri ?: "",
+                    phoneNumbers = arrayListOf(phoneNumber),
+                    birthdays = ArrayList(),
+                    anniversaries = ArrayList()
+                )
+            )
+            messages.add(
+                Message(
+                    id = cursor.getLongValue(Sms._ID),
+                    body = cursor.getStringValue(Sms.BODY),
+                    type = cursor.getIntValue(Sms.TYPE),
+                    status = cursor.getIntValue(Sms.STATUS),
+                    participants = participants,
+                    date = (cursor.getLongValue(Sms.DATE) / 1000).toInt(),
+                    read = cursor.getIntValue(Sms.READ) == 1,
+                    threadId = cursor.getLongValue(Sms.THREAD_ID),
+                    isMMS = false,
+                    attachment = null,
+                    senderPhoneNumber = senderNumber,
+                    senderName = namePhoto.name,
+                    senderPhotoUri = namePhoto.photoUri ?: "",
+                    subscriptionId = cursor.getIntValueOr(
+                        key = Sms.SUBSCRIPTION_ID,
+                        defaultValue = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                    )
+                )
+            )
+        }
+    } catch (_: Exception) {
+    }
+
+    // ids the SMS store does not know may be MMS messages
+    val smsIds = messages.map { it.id }.toSet()
+    starredIds.filterNot { it in smsIds }.forEach { id ->
+        try {
+            getMMS(messageId = id).firstOrNull()?.let { messages.add(it) }
+        } catch (_: Exception) {
+        }
+    }
+
+    return messages.sortedWith(compareByDescending<Message> { it.date }.thenByDescending { it.id })
 }
 
 fun Context.deleteMessage(id: Long, isMMS: Boolean) {
@@ -1115,6 +1239,10 @@ fun Context.deleteMessage(id: Long, isMMS: Boolean) {
     try {
         contentResolver.delete(uri, selection, selectionArgs)
         messagesDB.delete(id)
+        // The star row has to follow its message into deletion - a leftover row made
+        // `getStarredMessageIds()` report an id that no longer resolves to a message
+        // (1.1.04 fix, review C1).
+        unstarMessage(id)
     } catch (e: Exception) {
         showErrorToast(e)
     }

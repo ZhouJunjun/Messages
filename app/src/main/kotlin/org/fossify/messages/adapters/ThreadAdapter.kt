@@ -16,9 +16,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.viewbinding.ViewBinding
 import com.bumptech.glide.Glide
@@ -65,7 +67,6 @@ import org.fossify.messages.dialogs.DeleteConfirmationDialog
 import org.fossify.messages.dialogs.MessageDetailsDialog
 import org.fossify.messages.dialogs.SelectTextDialog
 import org.fossify.messages.extensions.config
-import org.fossify.messages.extensions.isMessageStarred
 import org.fossify.messages.extensions.isImageMimeType
 import org.fossify.messages.extensions.isPlayableAudioMimeType
 import org.fossify.messages.extensions.isVCardMimeType
@@ -103,7 +104,21 @@ class ThreadAdapter(
     val deleteMessages: (messages: List<Message>) -> Unit
 ) : MyRecyclerViewListAdapter<ThreadItem>(activity, recyclerView, ThreadItemDiffCallback(), itemClick) {
     private var fontSize = activity.getTextSize()
+
+    /**
+     * Ids of every starred message of this thread, resolved by the activity on a background
+     * thread. Setting it rebinds the visible rows: the per-message star toggle (1.1.04 spec)
+     * draws its colour from this set, so without the rebind a row bound before the async load
+     * finished kept the wrong state until it was scrolled away (review M2).
+     */
     var starredIds: Set<Long> = emptySet()
+        set(value) {
+            if (field != value) {
+                field = value
+                @Suppress("NotifyDataSetChanged")
+                notifyDataSetChanged()
+            }
+        }
 
     /**
      * Message the thread was opened at - the one a starred row or a search result points at. Its
@@ -140,6 +155,23 @@ class ThreadAdapter(
 
         /** Opacity of the highlight layer laid over the bubble a jump landed on (1.0.9 spec; 30% -> 20% in 1.1.01). */
         private const val HIGHLIGHT_ALPHA = 0.2f
+
+        /** Star colour of a starred message (1.1.01 spec); unstarred uses the border grey. */
+        private const val STAR_FILLED_COLOR = 0xFFFFD600.toInt()
+
+        /** Icon font in `app/src/main/assets/`, holding the single U+2B50 star glyph (1.1.02 rework). */
+        private const val STAR_FONT_ASSET = "fonts/MyTree-Regular.ttf"
+
+        /** The glyph the font above is built for - a text star, tinted per state rather than painted. */
+        private const val STAR_GLYPH = "\u2B50"
+    }
+
+    /**
+     * The icon font that draws the star glyph, parsed once and reused: `createFromAsset()` reloads
+     * the file on every call and rows are re-bound while scrolling (1.1.02 second rework).
+     */
+    private val starTypeface: Typeface by lazy {
+        Typeface.createFromAsset(activity.assets, STAR_FONT_ASSET)
     }
 
     init {
@@ -323,16 +355,44 @@ class ThreadAdapter(
 
     private fun toggleStarred() {
         val message = getSelectedItems().firstOrNull() as? Message ?: return
+        // The in-memory set is the authority here - re-querying the database just to decide
+        // which way to flip is a needless main-thread-adjacent read (1.1.04 fix).
+        val isStarred = starredIds.contains(message.id)
+        starredIds = if (isStarred) {
+            starredIds - message.id
+        } else {
+            starredIds + message.id
+        }
         ensureBackgroundThread {
-            if (activity.isMessageStarred(message.id)) {
+            if (isStarred) {
                 activity.unstarMessage(message.id)
-                starredIds = starredIds - message.id
             } else {
                 activity.starMessage(message.id)
-                starredIds = starredIds + message.id
             }
-            activity.runOnUiThread {
-                finishActMode()
+        }
+        activity.runOnUiThread {
+            finishActMode()
+        }
+    }
+
+    /**
+     * The per-message star toggle on the metadata line (1.1.04 spec): flips the in-memory id
+     * set (which rebinds the row) and writes the change on a background thread - `starred_
+     * messages` is a plain Room database without `allowMainThreadQueries()`, so the write must
+     * leave the main thread (1.1.02 lesson).
+     */
+    private fun toggleStar(message: Message) {
+        val isStarred = starredIds.contains(message.id)
+        starredIds = if (isStarred) {
+            starredIds - message.id
+        } else {
+            starredIds + message.id
+        }
+        ensureBackgroundThread {
+            if (isStarred) {
+                activity.unstarMessage(message.id)
+            } else {
+                activity.starMessage(message.id)
             }
         }
     }
@@ -358,10 +418,20 @@ class ThreadAdapter(
         } as ArrayList<ThreadItem>
     }
 
+    /**
+     * Replaces the displayed messages.
+     *
+     * [scrollPosition] is an adapter index; `-1` leaves the scroll position alone.
+     * **Never** pass `smoothScroll = true` for a long hop - see the note in [ThreadActivity]'s
+     * `placeMessageInViewport` (1.1.05). Reserved for short, in-viewport animations.
+     * [scrollOffset] > 0 puts the row that many pixels below the top of the list, instead of
+     * gluing it to the very edge.
+     */
     fun updateMessages(
         newMessages: List<ThreadItem>,
         scrollPosition: Int = -1,
-        smoothScroll: Boolean = false
+        smoothScroll: Boolean = false,
+        scrollOffset: Int = 0
     ) {
         val latestMessages = newMessages.toMutableList()
         submitList(latestMessages) {
@@ -369,7 +439,12 @@ class ThreadAdapter(
                 if (smoothScroll) {
                     recyclerView.smoothScrollToPosition(scrollPosition)
                 } else {
-                    recyclerView.scrollToPosition(scrollPosition)
+                    val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
+                    if (scrollOffset > 0 && layoutManager != null) {
+                        layoutManager.scrollToPositionWithOffset(scrollPosition, scrollOffset)
+                    } else {
+                        recyclerView.scrollToPosition(scrollPosition)
+                    }
                 }
             }
         }
@@ -393,6 +468,11 @@ class ThreadAdapter(
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.threadInfoTextSize.toFloat())
                 setTextColor(config.threadInfoTextColor)
 
+                // the row itself is wrap_content and follows the wrapper's gravity (set in
+                // setupReceived/SetupSentMessageView); this per-text gravity is redundant since
+                // 1.1.05 but kept harmless
+                gravity = if (received) Gravity.START else Gravity.END
+
                 // sent messages carry the "sent" (single tick) / "delivered" (double tick) mark at
                 // the end of the first line, tinted with the accent colour (1.0.7 spec)
                 val delivered = if (received) null else sentStatus[message.id]
@@ -407,6 +487,38 @@ class ThreadAdapter(
                     }
                 }
                 setCompoundDrawablesRelative(null, null, checkDrawable, null)
+            }
+
+            // Per-message star toggle (1.1.05 spec): received messages carry it right after the
+            // metadata text, sent ones right before it - 10dp away, the same gap the metadata
+            // parts keep between themselves. Scheduled entries are skipped - they are not
+            // persisted in the telephony store yet, so there is nothing to star.
+            val starView = if (received) threadMessageStarEnd else threadMessageStarStart
+            val idleStarView = if (received) threadMessageStarStart else threadMessageStarEnd
+            idleStarView.beGone()
+            idleStarView.setOnClickListener(null)
+            starView.apply {
+                val canStar = !message.isScheduled
+                beVisibleIf(canStar)
+                if (!canStar) {
+                    setOnClickListener(null)
+                } else {
+                    // 🔴 Same emoji2 opt-out as the search rows: U+2B50 is an emoji code point
+                    // and emoji2 would hand it to the system emoji font, ignoring both the
+                    // bundled typeface and the tint (1.1.02 lesson).
+                    (this as? AppCompatTextView)?.setEmojiCompatEnabled(false)
+                    text = STAR_GLYPH
+                    typeface = starTypeface
+                    // the spec: the star uses the message body's own font size
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, config.threadSnippetTextSize.toFloat())
+                    setTextColor(
+                        if (starredIds.contains(message.id)) STAR_FILLED_COLOR
+                        else activity.getColor(org.fossify.commons.R.color.divider_grey)
+                    )
+                    setOnClickListener {
+                        toggleStar(message)
+                    }
+                }
             }
 
             threadMessageBody.apply {

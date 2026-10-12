@@ -35,6 +35,7 @@ import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.extractCopyableStrings
 import org.fossify.messages.helpers.extractServiceName
 import org.fossify.messages.helpers.formatMessageDateTime
+import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
 import org.fossify.messages.models.Conversation
@@ -78,8 +79,24 @@ abstract class BaseConversationsAdapter(
         setHasStableIds(true)
         updateDrafts()
 
+        // The scroll position is saved every time the list settles, so a restore below always
+        // lands on where the user actually stopped rather than where the last submitList began
+        // (1.1.04 fix).
+        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    saveRecyclerViewState()
+                }
+            }
+        })
+
+        // Restores used to run on `onChanged` too, i.e. on every plain `notifyDataSetChanged` -
+        // and `MainActivity.refreshListAppearance()` fires one on every onResume. That pushed
+        // the list back to the position saved at the last `submitList`, so returning from a
+        // conversation / settings jumped the list (1.1.04 fix, review B1). Restores now happen
+        // only for the structural updates the diff actually reports; an appearance-only repaint
+        // keeps whatever position is on screen.
         registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onChanged() = restoreRecyclerViewState()
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) =
                 restoreRecyclerViewState()
 
@@ -184,7 +201,12 @@ abstract class BaseConversationsAdapter(
             conversationFrame.isSelected = selectedKeys.contains(conversation.hashCode())
 
             val config = activity.config
+            // The `【签名】` is only a title candidate for senders whose number is actually
+            // service-like (1.1.04 fix): a private message reading "【急】晚上聚餐" used to
+            // introduce its row as "急" even though the conversation no longer classifies as a
+            // service one.
             val serviceName = extractServiceName(conversation.snippet)
+                ?.takeIf { isServiceNumber(conversation.phoneNumber) }
 
             // The resolved contact name wins over the `【签名】` extracted from the message body, so
             // a row reads exactly like its thread toolbar does - e.g. "中国联通" instead of

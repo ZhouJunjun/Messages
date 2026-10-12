@@ -68,13 +68,16 @@ import org.fossify.messages.extensions.clearAllMessagesIfNeeded
 import org.fossify.messages.extensions.clearExpiredScheduledMessages
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.getStarredMessageIds
+import org.fossify.messages.extensions.getStarredMessages
 import org.fossify.messages.extensions.conversationsDB
 import org.fossify.messages.extensions.scanConversations
 import org.fossify.messages.extensions.getMessages
 import org.fossify.messages.extensions.insertOrUpdateConversation
 import org.fossify.messages.extensions.messagesDB
 import org.fossify.messages.extensions.searchMessages
+import org.fossify.messages.extensions.updateLastConversationMessage
 import org.fossify.messages.helpers.SEARCHED_MESSAGE_ID
+import org.fossify.messages.helpers.AvatarColors
 import org.fossify.messages.helpers.isServiceConversation
 import org.fossify.messages.helpers.THREAD_ID
 import org.fossify.messages.helpers.THREAD_TITLE
@@ -245,6 +248,19 @@ class MainActivity : SimpleActivity() {
         val searchBoxText = binding.mainMenu.binding.topToolbarSearch.text?.toString().orEmpty()
         if (searchBoxText.isNotEmpty() && (searchBoxText != lastSearchedText || !searchActive)) {
             runSearch(searchBoxText)
+        } else if (searchActive) {
+            // The box text and the shown query match, so there is nothing to re-run (review M4) -
+            // but messages may have been starred from a thread screen while this activity sat
+            // behind it. Re-read the id set once so the search rows' stars draw the fresh state
+            // (1.1.04 fix); the toggle listener keeps it live for toggles made right here.
+            ensureBackgroundThread {
+                val ids = try {
+                    getStarredMessageIds()
+                } catch (_: Exception) {
+                    return@ensureBackgroundThread
+                }
+                runOnUiThread { starredMessageIds = ids }
+            }
         }
     }
 
@@ -691,13 +707,13 @@ class MainActivity : SimpleActivity() {
                 activity = this,
                 recyclerView = list,
                 itemClick = { handleStarredMessageClick(it) }
-            )
+            ).apply { attachStarToggle() }
 
             wantsMessageRows -> StarredMessagesAdapter(
                 activity = this,
                 recyclerView = list,
                 itemClick = { handleSearchMessageClick(it) }
-            )
+            ).apply { attachStarToggle() }
 
             else -> ConversationsAdapter(
                 activity = this,
@@ -709,6 +725,22 @@ class MainActivity : SimpleActivity() {
 
         if (areSystemAnimationsEnabled) {
             list.scheduleLayoutAnimation()
+        }
+    }
+
+    /**
+     * Routes a row's star toggle back into [starredMessageIds], the single source of truth for
+     * the id set (1.1.04 fix). Before, only the adapter's own copy was updated, so the next
+     * `refreshPage` pushed the stale activity set straight back and the star icon "reverted"
+     * while the database was actually correct (review A1).
+     */
+    private fun StarredMessagesAdapter.attachStarToggle() {
+        onStarToggledListener = { messageId, starred ->
+            starredMessageIds = if (starred) {
+                starredMessageIds + messageId
+            } else {
+                starredMessageIds - messageId
+            }
         }
     }
 
@@ -809,15 +841,27 @@ class MainActivity : SimpleActivity() {
      * A hit is filed under the tab its conversation already lives in, so the tab strip keeps
      * meaning the same thing inside and outside a search. Hits of a thread the conversation list
      * does not know about yet fall back to classifying the message itself.
+     *
+     * Both branches hand the classifier the contact-name flag: a sender saved in the address
+     * book is a regular conversation even when its number looks service-like (1.1.04 fix).
      */
     private fun searchMessagesForTab(tab: Int): List<Message> {
         val conversationByThread = allConversationsForTabs.associateBy { it.threadId }
         return searchMessageResults.filter { message ->
             val conversation = conversationByThread[message.threadId]
             val isService = if (conversation != null) {
-                isServiceConversation(conversation.phoneNumber, conversation.snippet)
+                isServiceConversation(
+                    phoneNumber = conversation.phoneNumber,
+                    snippet = conversation.snippet,
+                    hasContactName = conversation.hasContactName(),
+                )
             } else {
-                isServiceConversation(message.senderPhoneNumber, message.body)
+                isServiceConversation(
+                    phoneNumber = message.senderPhoneNumber,
+                    snippet = message.body,
+                    hasContactName = message.senderName != message.senderPhoneNumber &&
+                        AvatarColors.isRealName(message.senderName),
+                )
             }
             if (tab == TAB_SERVICES) isService else !isService
         }
@@ -851,16 +895,30 @@ class MainActivity : SimpleActivity() {
         conversationCache.clear()
     }
 
+    /**
+     * True when the conversation's title is a real contact name, as opposed to a raw number or a
+     * user-set custom title. A saved contact is always classified as a regular conversation,
+     * even when its number looks service-like (1.1.04 fix); a custom title must not hide the
+     * service-ness of the number behind it.
+     */
+    private fun Conversation.hasContactName(): Boolean {
+        return !usesCustomTitle && AvatarColors.isRealName(title)
+    }
+
     private fun filterConversationsForTab(
         conversations: ArrayList<Conversation>,
         tab: Int,
     ): ArrayList<Conversation> {
         return when (tab) {
             TAB_SERVICES -> ArrayList(
-                conversations.filter { isServiceConversation(it.phoneNumber, it.snippet) }
+                conversations.filter {
+                    isServiceConversation(it.phoneNumber, it.snippet, it.hasContactName())
+                }
             )
             else -> ArrayList(
-                conversations.filter { !isServiceConversation(it.phoneNumber, it.snippet) }
+                conversations.filter {
+                    !isServiceConversation(it.phoneNumber, it.snippet, it.hasContactName())
+                }
             )
         }
     }
@@ -955,7 +1013,7 @@ class MainActivity : SimpleActivity() {
     private fun loadStarredMessages() {
         ensureBackgroundThread {
             val messages = try {
-                messagesDB.getStarredMessages()
+                getStarredMessages()
             } catch (_: Exception) {
                 emptyList<Message>()
             }
@@ -1244,9 +1302,38 @@ class MainActivity : SimpleActivity() {
         )
     }
 
+    /**
+     * Handles the conversation-refresh event.
+     *
+     * When the event carries thread ids (1.1.04: posted on leaving the thread screen, on
+     * marking a thread unread and when a thread's unread state changes), only those threads are
+     * re-read - the provider trigger in [updateLastConversationMessage] refreshes their snippets,
+     * and the list rebuilds from the conversations DB. That replaces the full telephony scan
+     * ([initMessenger]) every conversation exit used to trigger, which was the main source of
+     * jank on returning to the list (review M1).
+     *
+     * An event without ids (receivers, bulk operations, settings changes) still runs the full
+     * initialisation path.
+     */
     @Subscribe(threadMode = ThreadMode.MAIN)
-    fun refreshConversations(@Suppress("unused") event: Events.RefreshConversations) {
-        initMessenger()
+    fun refreshConversations(event: Events.RefreshConversations) {
+        val threadIds = event.threadIds
+        if (threadIds.isEmpty()) {
+            initMessenger()
+            return
+        }
+
+        ensureBackgroundThread {
+            updateLastConversationMessage(threadIds)
+            val all = try {
+                conversationsDB.getAll().toMutableList() as ArrayList<Conversation>
+            } catch (_: Exception) {
+                ArrayList()
+            }
+            runOnUiThread {
+                setupConversations(all)
+            }
+        }
     }
 
     private fun checkWhatsNewDialog() {

@@ -322,7 +322,9 @@ class ThreadActivity : SimpleActivity() {
     override fun onPause() {
         super.onPause()
         saveDraftMessage()
-        bus?.post(Events.RefreshConversations())
+        // The thread id lets the lists refresh just this conversation instead of re-running the
+        // full telephony scan on every exit (1.1.04 fix, review M1).
+        bus?.post(Events.RefreshConversations(setOf(threadId)))
         isActivityVisible = false
     }
 
@@ -743,7 +745,9 @@ class ThreadActivity : SimpleActivity() {
     private fun jumpToMessage(messageId: Long) {
         if (messages.any { it.id == messageId }) {
             val index = threadItems.indexOfFirst { (it as? Message)?.id == messageId }
-            if (index != -1) binding.threadMessagesList.smoothScrollToPosition(index)
+            if (index != -1) {
+                placeMessageInViewport(index)
+            }
             return
         }
 
@@ -770,12 +774,31 @@ class ThreadActivity : SimpleActivity() {
                 threadItems = latestThreadItems
                 loadingOlderMessages = false
                 val index = latestThreadItems.indexOfFirst { (it as? Message)?.id == messageId }
-                getOrCreateThreadAdapter().updateMessages(
-                    newMessages = latestThreadItems, scrollPosition = index, smoothScroll = true
-                )
+                if (index != -1) {
+                    placeMessageInViewport(index)
+                }
                 isJumpingToMessage = false
             }
         }
+    }
+
+    /**
+     * Brings the row at [index] into view **at once**, roughly a third of the way down.
+     *
+     * 🔴 Deliberately not a smooth scroll. `RecyclerView.smoothScrollToPosition` runs ONE animation
+     * whose duration grows with the distance, so jumping to a message a few hundred rows up slid
+     * through the whole conversation for tens of seconds ("疯狂滚动") - and because the auto
+     * "load older" prefetch kept prepending rows on the way, every insert shifted the target index,
+     * so it settled on the wrong message in the end. Placing the row instantly has no distance
+     * penalty, and no pending animation is left to be invalidated by a later insert (1.1.05 fix).
+     */
+    private fun placeMessageInViewport(index: Int) {
+        val offset = (binding.threadMessagesList.height / 3).coerceAtLeast(0)
+        getOrCreateThreadAdapter().updateMessages(
+            newMessages = threadItems,
+            scrollPosition = index,
+            scrollOffset = offset
+        )
     }
 
     private fun tryLoadMoreMessages() {
@@ -1241,7 +1264,7 @@ class ThreadActivity : SimpleActivity() {
             markThreadMessagesUnread(threadId)
             runOnUiThread {
                 finish()
-                bus?.post(Events.RefreshConversations())
+                bus?.post(Events.RefreshConversations(setOf(threadId)))
             }
         }
     }
@@ -1279,8 +1302,16 @@ class ThreadActivity : SimpleActivity() {
 
         simIdMap.clear()
         simIdMap[-1] = "?"
-        subscriptionManagerCompat().activeSubscriptionInfoList?.forEachIndexed { index, subscriptionInfo ->
-            simIdMap[subscriptionInfo.subscriptionId] = "${index + 1}"
+        subscriptionManagerCompat().activeSubscriptionInfoList?.let { activeSIMs ->
+            // Each card is labelled with its operator name instead of a bare slot digit
+            // (1.1.04 spec). Two cards from the same operator get a slot-number suffix so they
+            // stay distinguishable, e.g. 移动1 / 移动2.
+            val baseNames = activeSIMs.map { carrierShortName(it) }
+            activeSIMs.forEachIndexed { index, subscriptionInfo ->
+                val base = baseNames[index]
+                val label = if (baseNames.count { it == base } > 1) "$base${index + 1}" else base
+                simIdMap[subscriptionInfo.subscriptionId] = label
+            }
         }
 
         var hadUnreadItems = false
@@ -1312,7 +1343,7 @@ class ThreadActivity : SimpleActivity() {
         }
 
         if (hadUnreadItems) {
-            bus?.post(Events.RefreshConversations())
+            bus?.post(Events.RefreshConversations(setOf(threadId)))
         }
 
         (binding.threadMessagesList.adapter as? ThreadAdapter)?.apply {
@@ -1320,6 +1351,22 @@ class ThreadActivity : SimpleActivity() {
             this.sentStatus = sentStatus
         }
         return items
+    }
+
+    /**
+     * The short operator name of a SIM card, shown in the message metadata line's SIM badge
+     * (1.1.04 spec). The carrier string is matched by keyword first (移动 / 联通 / 电信, plus the
+     * common English carrier names); anything unrecognised falls back to the trimmed carrier
+     * name, or "SIM" when even that is blank.
+     */
+    private fun carrierShortName(info: SubscriptionInfo): String {
+        val combined = "${info.carrierName} ${info.displayName}".lowercase()
+        return when {
+            combined.contains("移动") || combined.contains("mobile") -> "移动"
+            combined.contains("联通") || combined.contains("unicom") -> "联通"
+            combined.contains("电信") || combined.contains("telecom") -> "电信"
+            else -> info.carrierName?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "SIM"
+        }
     }
 
     private fun launchActivityForResult(
