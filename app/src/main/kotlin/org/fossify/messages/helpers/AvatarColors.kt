@@ -10,41 +10,40 @@ import java.util.concurrent.ConcurrentHashMap
  * result is memoised, so binding a long list does not recompute (or re-hash) anything, per the
  * 1.0.3 spec.
  *
- * 🔴 The palette is the former Material 400 set with grey mixed in (1.1.03 spec: "在原来的8个上
- * 加灰调"). Each entry keeps its predecessor's *hue* and only trades saturation and lightness
- * away, so a row still reads as "red", "purple", "indigo"... while a screenful of avatars stops
- * behaving like a rainbow. Slots 4 and 5 are the one exception: 4/5/6 used to sit on adjacent
- * hues (blue 199 / teal 174 / green 123) and read as three near-identical blue-greens, so 6
- * (green) is kept and the other two moved to the widest gaps left on the wheel (rose 330, lime 75).
+ * The palette started as the Material 400 set with grey mixed in (1.1.03 spec). Since then it is
+ * driven directly by the user, so the slot order below is just "the current list", not a hue
+ * wheel: 1.1.07 dropped the lime slot and asked for a red, a cyan-blue and a yellow that are
+ * brighter than the greyed-down set was.
  *
  * Every entry is picked as a *background*: the label on top of it is always pure white
- * (`Color.WHITE`, set by both adapters), so each colour must stay dark enough for the white
- * glyphs to sit on it. The grey factor is the transform's only free parameter - 60% saturation
- * (the "light grey" tier the user picked), lightness solved until the ratio clears 3.8:1 against
- * #FFFFFF (WCAG relative-luminance formula, computed rather than eyeballed):
- *
- *   #EF5350 red    -> #d95957 3.81    #AB47BC purple -> #c155d4 3.81
- *   #5C6BC0 indigo -> #6278f5 3.80    #29B6F6 blue   -> #d35494 3.84   (slot 4, hue 199 -> 330)
- *   #26A69A teal   -> #768b38 3.80    #66BB6A green  -> #3b9440 3.82   (slot 5, hue 174 -> 75)
- *   #FFA726 orange -> #a37b41 3.84    #8D6E63 brown  -> #c16c4d 3.80
+ * (`Color.WHITE`, set by both adapters), so each colour has to stay dark enough for the white
+ * glyphs to sit on it. Contrast ratios against #FFFFFF (WCAG relative-luminance formula) are
+ * listed per line; the original palette solved for >= 3.8:1, and the hand-picked 1.1.07 colours
+ * land lower (2.1 - 3.8) because they are deliberately lighter - the yellowish ones sit near the
+ * bottom of that band by nature, since "yellow" and "white text" pull in opposite directions.
+ * The yellow slot is a compromise: a mustard/olive tint (#9c8c22, 3.39) was tried first but read
+ * as dull dung, so it was traded for a saturated gold (#d4af37) that reads clearly yellow even
+ * though the white label on it is the softest in the set.
  *
  * Changing a value here means re-checking that ratio - a lighter tint looks softer but washes
  * the white label out.
  */
 object AvatarColors {
     /**
-     * Greyed-down keepsakes of the original Material 400 palette, ordered as before so a given
-     * name keeps the colour family it has always had (slots 4/5 moved to rose/lime, see above).
+     * The current palette. Slot order only decides which name lands on which colour (via
+     * `hashCode() % size`), so adding an entry re-sorts the whole list - that is expected each
+     * time the user edits the set.
      */
     private val palette = intArrayOf(
-        0xffd95957.toInt(),  // red
-        0xffc155d4.toInt(),  // purple
-        0xff6278f5.toInt(),  // indigo
-        0xffd35494.toInt(),  // rose  (was blue, hue 199 -> 330)
-        0xff768b38.toInt(),  // lime  (was teal, hue 174 -> 75)
-        0xff3b9440.toInt(),  // green
-        0xffa37b41.toInt(),  // orange
-        0xffc16c4d.toInt()   // brown
+        0xfff15c80.toInt(),  // red-pink    3.19  (1.1.07, was #d95957 / 3.81)
+        0xffc155d4.toInt(),  // purple      3.81
+        0xff4bacc6.toInt(),  // cyan-blue   2.62  (1.1.07, was indigo #6278f5 / 3.80)
+        0xffd35494.toInt(),  // rose        3.84
+        0xff3b9440.toInt(),  // green       3.82  (the lime slot above it was dropped in 1.1.07)
+        0xffa37b41.toInt(),  // orange      3.84
+        0xffc16c4d.toInt(),  // brown       3.80
+        0xff8085e9.toInt(),  // periwinkle  3.26  (1.1.07, new)
+        0xffd4af37.toInt()   // gold        2.10  (1.1.07, new - the asked-for "yellow")
     )
 
     private val cache = ConcurrentHashMap<String, Int>()

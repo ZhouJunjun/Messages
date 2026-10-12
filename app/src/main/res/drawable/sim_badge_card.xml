@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Background of the thread bottom bar's operator badge (`thread_select_sim_number`).
+
+  Same rounded-rectangle silhouette as `ic_sim_card_vector`, but drawn as a `<shape>` instead of a
+  vector on purpose: the badge is `wrap_content` in width and only about 24dp tall, so a
+  two-character operator name (移动 / 联通 / 电信) stretches the card horizontally. A vector used as
+  a background is scaled non-uniformly to the view bounds, which would squash its corner arcs into
+  ellipses (rx 3 * 1.5 vs ry 3); a shape keeps the corners circular at any aspect ratio.
+
+  The solid white is replaced at runtime by the activity, which tints the background to the app's
+  text colour and paints the label in that colour's contrast (see `ThreadActivity`'s SIM block).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="3dp" />
+</shape>

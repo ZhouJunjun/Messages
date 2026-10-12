@@ -30,6 +30,7 @@ import org.fossify.messages.helpers.formatMessageDateTime
 import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
+import org.fossify.messages.helpers.stripRedundantSignature
 import org.fossify.messages.models.Message
 import org.joda.time.DateTime
 
@@ -159,7 +160,12 @@ class StarredMessagesAdapter(
                 }
 
                 starredBody.apply {
-                    val bodyText = sanitizeForDisplay(message.body)
+                    // A leading `【签名】` that just repeats this row's own title is dropped, so the
+                    // snippet starts at the real body text (1.1.07 spec).
+                    val bodyText = stripRedundantSignature(
+                        sanitizeForDisplay(message.body),
+                        displayName
+                    )
                     text = if (highlight.isEmpty()) bodyText else bodyText.highlightTextPart(highlight, highlightColor)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeSnippetTextSize.toFloat())
                     setTextColor(config.homeSnippetTextColor)

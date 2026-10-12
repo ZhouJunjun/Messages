@@ -38,6 +38,7 @@ import org.fossify.messages.helpers.formatMessageDateTime
 import org.fossify.messages.helpers.isServiceNumber
 import org.fossify.messages.helpers.sanitizeForDisplay
 import org.fossify.messages.helpers.setupCopyableStrings
+import org.fossify.messages.helpers.stripRedundantSignature
 import org.fossify.messages.models.Conversation
 import org.joda.time.DateTime
 
@@ -231,7 +232,12 @@ abstract class BaseConversationsAdapter(
             }
 
             conversationBodyShort.apply {
-                val snippetText = sanitizeForDisplay(smsDraft ?: conversation.snippet)
+                // A leading `【签名】` that just repeats this row's own title is dropped, so the
+                // snippet starts at the real body text (1.1.07 spec).
+                val snippetText = stripRedundantSignature(
+                    sanitizeForDisplay(smsDraft ?: conversation.snippet),
+                    displayName
+                )
                 text = if (highlight.isEmpty()) snippetText else snippetText.highlightTextPart(highlight, highlightColor)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, config.homeSnippetTextSize.toFloat())
                 setTextColor(config.homeSnippetTextColor)

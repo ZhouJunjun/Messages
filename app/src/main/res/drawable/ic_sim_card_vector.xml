@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The SIM card silhouette behind every operator badge (the message metadata line and the thread
+  bottom bar's operator selector).
+
+  1.1.07 spec: commons' `ic_sim_vector` carried a notched top-left corner (a real SIM card's cut
+  corner). At badge size the notch read as a missing chunk rather than a design detail, and it
+  forced the label to sit off-centre - the left gap had to be wider than the right one so the
+  glyphs cleared the diagonal. This redraw is a plain rounded rectangle:
+
+    - no notch, so the two inner gaps are the same width and the label can be centred;
+    - the outline covers the WHOLE viewport (0..24 on both axes), so a stretched badge no longer
+      needs the `1 / 0.7213` compensation commons' icon required - the bounds ARE the card.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,0H21A3,3 0 0 1 24,3V21A3,3 0 0 1 21,24H3A3,3 0 0 1 0,21V3A3,3 0 0 1 3,0Z" />
+</vector>

@@ -115,44 +115,41 @@
         android:minHeight="@dimen/normal_icon_size"
         android:maxLines="8"
         app:layout_constraintBottom_toTopOf="@+id/attachment_picker_divider"
-        app:layout_constraintEnd_toStartOf="@id/thread_select_sim_icon"
+        app:layout_constraintEnd_toStartOf="@id/thread_select_sim_number"
         app:layout_constraintStart_toEndOf="@+id/thread_add_attachment" />
 
-    <ImageView
-        android:id="@+id/thread_select_sim_icon"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:alpha="0.9"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:paddingStart="@dimen/medium_margin"
-        android:paddingTop="@dimen/normal_margin"
-        android:paddingEnd="@dimen/medium_margin"
-        android:paddingBottom="@dimen/normal_margin"
-        android:src="@drawable/ic_sim_vector"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@+id/thread_type_message"
-        app:layout_constraintEnd_toStartOf="@id/thread_character_counter"
-        app:layout_constraintTop_toTopOf="@+id/thread_type_message"
-        tools:visibility="visible" />
-
     <!--
-      The label drawn over the SIM icon: it used to be the slot digit, and since 1.1.06 it is the
-      operator name (移动 / 联通 / 电信, or 移动1 / 移动2 for two cards on the same operator) - the
-      same label the message metadata line's badge shows. Two characters need a smaller size than a
-      single digit to stay inside the icon, hence smaller_text_size rather than normal_text_size.
+      The operator selector. 1.1.06 already replaced the slot digit with the operator name
+      (移动 / 联通 / 电信, or 移动1 / 移动2 when two cards share an operator) - the same label the
+      message metadata line's badge shows.
+      It used to be a fixed-size ImageView with this TextView laid over it, so the card was pinned
+      at the icon's intrinsic width and a two-character name spilled straight out of it.
+      🔴 The card is now the TextView's own background and the TEXT drives the width
+      (`wrap_content` + `sim_badge_horizontal_padding` on both sides). The height does NOT: it is
+      pinned to `sim_badge_height` (24dp, i.e. the icon it replaced), because sizing both axes off
+      `normal_icon_size` made it a 48dp square that filled the entire bottom bar - it is meant to
+      be a chip that hugs its label, not a block.
+      The activity tints the background to the app's text colour and the label to its contrast.
     -->
     <TextView
         android:id="@+id/thread_select_sim_number"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/sim_badge_height"
+        android:layout_marginEnd="@dimen/small_margin"
+        android:background="@drawable/sim_badge_card"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
         android:gravity="center"
+        android:includeFontPadding="false"
+        android:minWidth="@dimen/sim_badge_height"
+        android:maxLines="1"
+        android:paddingStart="@dimen/sim_badge_horizontal_padding"
+        android:paddingEnd="@dimen/sim_badge_horizontal_padding"
         android:textSize="@dimen/smaller_text_size"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/thread_select_sim_icon"
-        app:layout_constraintEnd_toEndOf="@id/thread_select_sim_icon"
-        app:layout_constraintStart_toStartOf="@id/thread_select_sim_icon"
-        app:layout_constraintTop_toTopOf="@id/thread_select_sim_icon"
-        tools:text="1"
+        app:layout_constraintBottom_toBottomOf="@+id/thread_type_message"
+        app:layout_constraintEnd_toStartOf="@id/thread_character_counter"
+        app:layout_constraintTop_toTopOf="@+id/thread_type_message"
+        tools:text="移动"
         tools:textColor="@color/dark_grey"
         tools:visibility="visible" />
 

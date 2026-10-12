@@ -59,6 +59,38 @@ fun extractServiceName(snippet: String): String? {
 }
 
 /**
+ * The same signature as [SERVICE_NAME_REGEX], but anchored to the very start of the body
+ * (leading whitespace allowed).
+ */
+private val LEADING_SIGNATURE_REGEX = Regex("^\\s*[【\\[]([^】\\]]{1,20})[】\\]]")
+
+/**
+ * Drops the signature at the start of [snippet] when it merely repeats the sender the row already
+ * shows as its title (1.1.07 spec).
+ *
+ * Service texts repeat themselves this way all the time: a 招商银行 row carrying
+ * "【招商银行】您账户9328关联个人信用卡扣款…" printed "招商银行" twice on a single line, once as
+ * the title and once inside the snippet. When the signature equals [title] the snippet now starts
+ * at the actual body text.
+ *
+ * Any other signature is left alone - a different sender, or a bracketed word such as "【急】" -
+ * and so is the snippet when it opens with no signature at all.
+ */
+fun stripRedundantSignature(snippet: String, title: String): String {
+    if (snippet.isEmpty() || title.isEmpty()) {
+        return snippet
+    }
+
+    val match = LEADING_SIGNATURE_REGEX.find(snippet) ?: return snippet
+    val signature = match.groupValues.getOrNull(1)?.trim().orEmpty()
+    if (signature.isEmpty() || !signature.equals(title.trim(), ignoreCase = true)) {
+        return snippet
+    }
+
+    return snippet.substring(match.range.last + 1).trimStart()
+}
+
+/**
  * Heuristic for "service-like" numbers (1.1.05 rework):
  *  - bulk SMS senders starting with 106 (usually 12+ digits)
  *  - fixed-line numbers starting with 0, area code included: personal texts never come from a

@@ -590,6 +590,12 @@ class ThreadAdapter(
      *
      * The SIM marker used to be literal text of the form `[1]`; it is now a [SimBadgeSpan] drawn
      * like the bottom bar's operator selector (1.0.7 spec).
+     *
+     * 🔴 1.1.08: the badge sits at a DIFFERENT end on each side. Our own (sent) rows read
+     * `star, timestamp, badge`; received rows keep reading `badge, sender number, timestamp`.
+     * That is why the badge is appended from a local function instead of inline at the top - the
+     * order it is appended in is now branch-dependent, while [appendGap] keeps the exact same
+     * [METADATA_PART_GAP_DP] separator wherever it lands.
      */
     private fun buildMetadataText(message: Message): CharSequence {
         val builder = SpannableStringBuilder()
@@ -614,14 +620,17 @@ class ThreadAdapter(
             builder.append(part)
         }
 
-        if (hasMultipleSIMCards) {
+        fun appendSimBadge() {
+            if (!hasMultipleSIMCards) {
+                return
+            }
             appendGap()
             val start = builder.length
             builder.append('\u200B')
 
             val config = activity.config
             val simSize = (config.threadInfoTextSize * activity.resources.displayMetrics.scaledDensity).roundToInt()
-            val simIcon = AppCompatResources.getDrawable(activity, org.fossify.commons.R.drawable.ic_sim_vector)?.mutate()
+            val simIcon = AppCompatResources.getDrawable(activity, R.drawable.ic_sim_card_vector)?.mutate()
             val simLabel = simIdMap[message.subscriptionId] ?: "?"
             if (simIcon != null) {
                 builder.setSpan(
@@ -640,10 +649,18 @@ class ThreadAdapter(
                 builder.append(simLabel)
             }
         }
-        if (message.isReceivedMessage() && message.senderPhoneNumber.isNotEmpty() && !hideSenderNumber) {
-            appendPart(message.senderPhoneNumber)
+
+        val received = message.isReceivedMessage()
+        if (received) {
+            appendSimBadge()
+            if (message.senderPhoneNumber.isNotEmpty() && !hideSenderNumber) {
+                appendPart(message.senderPhoneNumber)
+            }
+            appendPart(formatTimestamp(message.millis()))
+        } else {
+            appendPart(formatTimestamp(message.millis()))
+            appendSimBadge()
         }
-        appendPart(formatTimestamp(message.millis()))
         return builder
     }
 

@@ -1108,12 +1108,21 @@ class ThreadActivity : SimpleActivity() {
             val simLabels = buildSimLabels(availableSIMs)
 
             currentSIMCardIndex = getProperSimIndex(availableSIMs, numbers)
-            binding.messageHolder.threadSelectSimIcon.applyColorFilter(getProperTextColor())
-            binding.messageHolder.threadSelectSimIcon.beVisible()
-            binding.messageHolder.threadSelectSimNumber.beVisible()
+            // 🔴 1.1.07: the selector is one TextView whose background IS the card, not a
+            // fixed-size icon with the label painted over it. That is what lets the card grow with
+            // the operator name (移动 / 联通 / 电信, or 移动1 / 移动2) instead of the name spilling
+            // out of it. Only the WIDTH is text-driven though - the height is pinned to
+            // `sim_badge_height` (`layout_thread_send_message_holder.xml`), so this stays a small
+            // chip. Sizing both axes off `normal_icon_size` is what made it a 48dp square filling
+            // the whole bar. The card is tinted here and the label takes the contrast colour.
+            binding.messageHolder.threadSelectSimNumber.apply {
+                beVisible()
+                backgroundTintList = ColorStateList.valueOf(getProperTextColor())
+                setTextColor(getProperTextColor().getContrastColor())
+            }
 
             if (availableSIMCards.isNotEmpty()) {
-                binding.messageHolder.threadSelectSimIcon.setOnClickListener {
+                binding.messageHolder.threadSelectSimNumber.setOnClickListener {
                     currentSIMCardIndex = (currentSIMCardIndex + 1) % availableSIMCards.size
                     val currentSIMCard = availableSIMCards[currentSIMCardIndex]
                     binding.messageHolder.threadSelectSimNumber.text =
@@ -1126,9 +1135,6 @@ class ThreadActivity : SimpleActivity() {
                 }
             }
 
-            binding.messageHolder.threadSelectSimNumber.setTextColor(
-                getProperTextColor().getContrastColor()
-            )
             try {
                 val currentSIMCard = availableSIMCards[currentSIMCardIndex]
                 binding.messageHolder.threadSelectSimNumber.text =

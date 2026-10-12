@@ -21,4 +21,21 @@
       changing a library value that is used elsewhere.
     -->
     <dimen name="main_tab_text_size">20sp</dimen>
+
+    <!--
+      Geometry of the thread bottom bar's operator badge (1.1.07 spec).
+
+      The width is `wrap_content`, so the operator name (移动 / 联通 / 电信, or 移动1 / 移动2) is
+      what sizes the card - that is the fix for the fixed-width icon the label used to spill out
+      of. The HEIGHT stays fixed at `sim_badge_height` so a one-digit label and a three-character
+      one are the same size.
+      🔴 24dp is deliberate: it matches the icon it replaced. The first 1.1.07 attempt reused
+      `normal_icon_size` (48dp) for both axes, which turned the chip into a full-height block that
+      filled the whole bottom bar.
+
+      `sim_badge_horizontal_padding` is the inner gap on each side of the label; it mirrors
+      `SimBadgeSpan.PAD_RATIO` on the message metadata line.
+    -->
+    <dimen name="sim_badge_height">24dp</dimen>
+    <dimen name="sim_badge_horizontal_padding">6dp</dimen>
 </resources>
