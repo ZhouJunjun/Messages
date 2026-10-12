@@ -6,7 +6,10 @@ import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.Menu
 import android.view.ViewGroup
+import androidx.core.view.doOnLayout
+import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.DiffUtil
+import kotlin.math.roundToInt
 import org.fossify.commons.adapters.MyRecyclerViewListAdapter
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
@@ -14,6 +17,7 @@ import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.highlightTextPart
 import org.fossify.commons.extensions.setupViewBackground
 import org.fossify.commons.helpers.FontHelper
+import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.views.MyRecyclerView
 import org.fossify.messages.R
 import org.fossify.messages.activities.SimpleActivity
@@ -189,6 +193,7 @@ class StarredMessagesAdapter(
                             toggleStar(message, holder.bindingAdapterPosition)
                         }
                     }
+                    applyStarSize()
                 } else {
                     starredStar.setOnClickListener(null)
                 }
@@ -212,21 +217,59 @@ class StarredMessagesAdapter(
     }
 
     /**
+     * 🔴 The star stands as tall as the title, and the title's size is user configurable
+     * (Custom appearance -> Home message title size), so the glyph height is derived from the
+     * title's measured height at runtime instead of being hard-coded (1.1.02 spec).
+     *
+     * `doOnLayout` is deliberate: `setTextSize()` only *requests* a layout, so until the next
+     * layout pass `starredTitle.height` still holds the previous bind's value - reading it
+     * straight away would size the star off a stale measurement.
+     */
+    private fun ItemStarredMessageBinding.applyStarSize() {
+        starredTitle.doOnLayout {
+            val titleHeight = starredTitle.height
+            if (titleHeight <= 0) {
+                return@doOnLayout
+            }
+
+            // `titleHeight` is the line box (roughly 1.3x the glyphs); the star should match the
+            // glyph height, hence the ratio. The 6dp padding is kept so the touch target stays
+            // comfortable and the visual gap to the title remains the 10dp the spec asks for.
+            val glyph = (titleHeight * STAR_TO_TITLE_RATIO).roundToInt()
+            val box = glyph + starredStar.paddingTop + starredStar.paddingBottom
+            if (starredStar.layoutParams.width != box) {
+                starredStar.updateLayoutParams<ViewGroup.LayoutParams> { width = box; height = box }
+            }
+        }
+    }
+
+    /**
      * Stars / unstars one message straight from the row and flips just that row's icon. Tapping the
      * star must not open the conversation, which is why the icon carries its own click listener.
+     *
+     * 🔴 The database write MUST leave the main thread: `starred_messages` is a plain Room
+     * database without `allowMainThreadQueries()`, so calling it from the click listener throws
+     * `IllegalStateException: Cannot access database on the main thread ...` (the toast the user
+     * reported). The in-memory id set is flipped synchronously so the icon still updates instantly.
      */
     private fun toggleStar(message: Message, position: Int) {
         val isStarred = starredMessageIds.contains(message.id)
-        if (isStarred) {
-            activity.unstarMessage(message.id)
-            starredMessageIds = starredMessageIds - message.id
+        starredMessageIds = if (isStarred) {
+            starredMessageIds - message.id
         } else {
-            activity.starMessage(message.id)
-            starredMessageIds = starredMessageIds + message.id
+            starredMessageIds + message.id
         }
 
         if (position >= 0) {
             notifyItemChanged(position)
+        }
+
+        ensureBackgroundThread {
+            if (isStarred) {
+                activity.unstarMessage(message.id)
+            } else {
+                activity.starMessage(message.id)
+            }
         }
     }
 
@@ -250,5 +293,11 @@ class StarredMessagesAdapter(
 
         /** Solid star colour of a starred search result (1.1.01 spec). */
         private const val STAR_FILLED_COLOR = 0xFFFFD600.toInt()
+
+        /**
+         * Converts the title's measured line-box height into the glyph height the star should
+         * match (~1.3x the glyphs at the default font, so the glyph is ~76% of the line box).
+         */
+        private const val STAR_TO_TITLE_RATIO = 0.76f
     }
 }

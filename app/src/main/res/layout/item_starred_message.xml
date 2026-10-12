@@ -60,15 +60,14 @@
         tools:text="中国移动" />
 
     <!--
-      Star toggle, shown on search-result rows only (1.1.01 spec), parked 10dp to the right of the
-      title. Tapping it stars / unstars the message without opening the conversation.
+      Star toggle, shown on search-result rows only (1.1.01 spec), parked to the right of the title.
+      Tapping it stars / unstars the message without opening the conversation.
 
-      🔴 Sizing (1.1.02 rework): the box is a fixed 24dp (a sane touch target) and 6dp of padding on
-      every side leaves a 12dp glyph. It must NOT be tied to the title's height any more - the title
-      is `wrap_content` inside a 16sp line box (~21dp tall) while its glyphs only stand ~11.5dp, so
-      matching the line box made the star look far bigger than the text.
-      The gap to the title is measured glyph-to-text, not box-to-box: marginStart 4dp + the 6dp
-      padding = the 10dp the spec asks for.
+      🔴 Sizing (1.1.02 rework): the box size is applied at runtime from the title's measured
+      height - see StarredMessagesAdapter.applyStarSize(). With the 6dp padding the glyph ends up as
+      tall as the title's text and keeps tracking the configurable title font size; the 24dp below is
+      only a first-frame fallback. The gap to the title is measured glyph-to-text, not box-to-box:
+      marginStart 4dp + the 6dp padding = the 10dp the spec asks for.
 
       🔴 The row is a single chain: avatar -> title -> star -> date -> parent. Every view anchors to
       its left neighbour's end and its right neighbour's start; giving the star an end anchor
