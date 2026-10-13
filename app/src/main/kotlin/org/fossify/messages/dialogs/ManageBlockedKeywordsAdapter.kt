@@ -4,7 +4,7 @@ import android.view.*
 import androidx.appcompat.widget.PopupMenu
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.adapters.MyRecyclerViewAdapter
-import org.fossify.commons.extensions.copyToClipboard
+import org.fossify.messages.helpers.copyQuietly
 import org.fossify.commons.extensions.getPopupMenuTheme
 import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.setupViewBackground
@@ -126,7 +126,7 @@ class ManageBlockedKeywordsAdapter(
 
     private fun copyKeywordToClipboard() {
         val selectedKeyword = getSelectedItems().firstOrNull() ?: return
-        activity.copyToClipboard(selectedKeyword)
+        copyQuietly(activity, selectedKeyword)
         finishActMode()
     }
 

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
@@ -37,7 +38,6 @@ import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.checkWhatsNew
 import org.fossify.commons.extensions.convertToBitmap
 import org.fossify.commons.extensions.getMyContactsCursor
-import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.hideKeyboard
@@ -110,11 +110,17 @@ private const val SEARCH_TEXT_SIZE_SP = 15f
 private const val SEARCH_BOX_HEIGHT_DP = 36f
 private const val SEARCH_BOX_H_PADDING_DP = 6f
 
+/** Corner radius of the search box; matches the old `search_menu_background` drawable (1.1.09). */
+private const val SEARCH_BOX_CORNER_RADIUS_DP = 12f
+
 /** Debounce applied to search-box input before the query runs (1.0.8 spec: 1s). */
 private const val SEARCH_DEBOUNCE_MS = 1000L
 
 /** Elevation of the tab row's overflow popup; the spec asks for a bigger shadow (1.0.8). */
 private const val POPUP_MENU_ELEVATION_DP = 12f
+
+/** Corner radius of the overflow popup; matches the old `popup_menu_background` drawable (1.1.09). */
+private const val POPUP_MENU_CORNER_RADIUS_DP = 8f
 
 class MainActivity : SimpleActivity() {
     override var isSearchBarEnabled = true
@@ -228,7 +234,10 @@ class MainActivity : SimpleActivity() {
         }
 
         updateTextColors(binding.mainCoordinator)
-        binding.searchHolder.setBackgroundColor(getProperBackgroundColor())
+        // 1.1.09: the list surface - and the "no results" holder drawn over it - follows the
+        // "default background" setting instead of the theme's own background colour.
+        binding.mainCoordinator.setBackgroundColor(config.defaultBackgroundColor)
+        binding.searchHolder.setBackgroundColor(config.defaultBackgroundColor)
         updateTabColors()
 
         val properPrimaryColor = getProperPrimaryColor()
@@ -397,17 +406,22 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * Re-applied after MySearchMenu.updateColors(): that call unconditionally puts a
-     * `colorPrimary@25%` colour filter on whatever Drawable the container happens to have, which is
-     * what used to leave the search box tinted instead of the #F2F2F2 the spec asks for.
+     * Turns the search box into the "conversation background" colour (1.1.09 spec). It used to be
+     * the fixed `search_menu_background` drawable, which is still what the layout inflates with -
+     * this rebuilds the same 12dp rounded rectangle in whatever colour the setting holds.
      *
-     * Assigning a *fresh* Drawable instance (rather than `setBackgroundResource`, which may hand
-     * back an instance sharing the tinted constant state) is what makes this stick.
+     * Re-applied after MySearchMenu.updateColors(): that call unconditionally puts a
+     * `colorPrimary@25%` colour filter on whatever Drawable the container happens to have. A
+     * *brand-new* instance (rather than `setBackgroundResource`, which may hand back an instance
+     * sharing the tinted constant state) is what makes this stick.
      */
     private fun applySearchBoxColors() {
         val search = binding.mainMenu.binding
-        search.toolbarContainer.background =
-            AppCompatResources.getDrawable(this, R.drawable.search_menu_background)
+        search.toolbarContainer.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = SEARCH_BOX_CORNER_RADIUS_DP * resources.displayMetrics.density
+            setColor(config.threadBackgroundColor)
+        }
         search.topToolbarSearch.apply {
             // a CJK single line sits visually low with the default font padding
             includeFontPadding = false
@@ -475,10 +489,17 @@ class MainActivity : SimpleActivity() {
 
     private fun updateMenuColors() {
         binding.mainMenu.updateColors()
+        // 1.1.09: the top bar - the tab row plus the strip the search box sits in - uses the
+        // "default background" setting. updateColors() has just repainted it with the theme's own
+        // background, so ours has to come right after.
+        binding.mainMenu.setBackgroundColor(config.defaultBackgroundColor)
         applySearchBoxColors()
         // once more after the current pass: the tint is applied to whatever background the
         // container has at the time, so ours has to be the very last word (1.0.8 spec)
-        binding.mainMenu.post { applySearchBoxColors() }
+        binding.mainMenu.post {
+            binding.mainMenu.setBackgroundColor(config.defaultBackgroundColor)
+            applySearchBoxColors()
+        }
     }
 
     private fun loadMessages() {
@@ -959,7 +980,12 @@ class MainActivity : SimpleActivity() {
     }
 
     /**
-     * White popup anchored to the tab row's overflow button, holding Settings and About.
+     * Overflow popup anchored to the tab row's overflow button, holding Settings and About.
+     *
+     * Until 1.1.09 it was pinned white with a dark text colour, because a popup lives in its own
+     * window and never gets repainted by the activity's [updateTextColors]. Now it follows the
+     * "default background" setting and takes the proper text colour, so it stays readable in both
+     * themes instead of only in the light one.
      *
      * Opaque background + elevation are what give it the drop shadow the 1.0.8 spec asks for:
      * the system derives a PopupWindow's shadow outline from its background drawable.
@@ -974,11 +1000,20 @@ class MainActivity : SimpleActivity() {
         ).apply {
             // API 36 removed getBackgroundDrawable(), so the Kotlin synthetic property
             // `backgroundDrawable` no longer resolves — must call the setter explicitly.
-            setBackgroundDrawable(AppCompatResources.getDrawable(this@MainActivity, R.drawable.popup_menu_background))
+            setBackgroundDrawable(GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = POPUP_MENU_CORNER_RADIUS_DP * resources.displayMetrics.density
+                setColor(config.defaultBackgroundColor)
+            })
             elevation = POPUP_MENU_ELEVATION_DP * resources.displayMetrics.density
             isOutsideTouchable = true
             isFocusable = true
         }
+
+        // a popup is its own window, so the activity-wide repaint never reaches it
+        val menuTextColor = getProperTextColor()
+        content.findViewById<TextView>(R.id.popup_menu_settings).setTextColor(menuTextColor)
+        content.findViewById<TextView>(R.id.popup_menu_about).setTextColor(menuTextColor)
 
         content.findViewById<View>(R.id.popup_menu_settings).setOnClickListener {
             popup.dismiss()

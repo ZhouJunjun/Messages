@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Search-box background (1.0.7 spec, hardened in 1.0.8).
+  Search-box background (1.0.7 spec, hardened in 1.0.8, repainted in 1.1.09).
 
   This file deliberately reuses commons' own drawable name (`search_menu_background`): app
   resources win over library resources during the merge, so `toolbar_container`'s
   `android:background="@drawable/search_menu_background"` already resolves to this 12dp /
   #F2F2F2 shape at inflation time - before any code runs.
 
-  It is still re-applied from MainActivity.applySearchBoxColors() because
-  MySearchMenu.updateColors() unconditionally puts a `colorPrimary@25%` color filter on that
-  background's Drawable instance.
+  Since 1.1.09 the colour is user-configurable ("conversation background"), so this shape only has
+  to cover the first frame: MainActivity.applySearchBoxColors() replaces it with an identical
+  rounded rectangle in the configured colour - and it has to, because MySearchMenu.updateColors()
+  unconditionally puts a `colorPrimary@25%` color filter on whatever Drawable the container holds
+  at the time.
 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">

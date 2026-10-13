@@ -24,6 +24,7 @@ import org.fossify.messages.activities.ThreadActivity
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.shortcutHelper
 import org.fossify.messages.messaging.isShortCodeWithLetters
+import org.fossify.messages.receivers.CopyVerificationCodeReceiver
 import org.fossify.messages.receivers.DeleteSmsReceiver
 import org.fossify.messages.receivers.DirectReplyReceiver
 import org.fossify.messages.receivers.MarkAsReadReceiver
@@ -45,7 +46,8 @@ class NotificationHelper(private val context: Context) {
         threadId: Long,
         bitmap: Bitmap?,
         sender: String?,
-        alertOnlyOnce: Boolean = false
+        alertOnlyOnce: Boolean = false,
+        verificationCode: String? = null
     ) {
         val hasCustomNotifications =
             context.config.customNotifications.contains(threadId.toString())
@@ -91,6 +93,30 @@ class NotificationHelper(private val context: Context) {
                 deleteSmsIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+
+        var copyCodeAction: NotificationCompat.Action? = null
+        if (verificationCode != null) {
+            // 1.1.09 spec: the code is put on the clipboard as soon as the message lands, and the
+            // button below is the manual fallback once the clipboard has been overwritten.
+            copyQuietly(context, verificationCode)
+
+            val copyIntent = Intent(context, CopyVerificationCodeReceiver::class.java).apply {
+                action = COPY_VERIFICATION_CODE
+                putExtra(VERIFICATION_CODE, verificationCode)
+            }
+            val copyPendingIntent =
+                PendingIntent.getBroadcast(
+                    context.applicationContext,
+                    notificationId,
+                    copyIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            copyCodeAction = NotificationCompat.Action.Builder(
+                org.fossify.commons.R.drawable.ic_copy_vector,
+                context.getString(R.string.copy_verification_code),
+                copyPendingIntent
+            ).build()
+        }
 
         var replyAction: NotificationCompat.Action? = null
         val isNoReplySms = isShortCodeWithLetters(address)
@@ -154,6 +180,11 @@ class NotificationHelper(private val context: Context) {
 
         if (replyAction != null && context.config.lockScreenVisibilitySetting == LOCK_SCREEN_SENDER_MESSAGE) {
             builder.addAction(replyAction)
+        }
+
+        // added before "mark as read" so it survives the collapsed view's 3-action limit
+        if (copyCodeAction != null) {
+            builder.addAction(copyCodeAction)
         }
 
         builder.addAction(

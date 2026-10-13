@@ -72,6 +72,16 @@ const val LINK_TEXT_COLOR_DARK = "link_text_color_dark"
 const val HIGHLIGHT_COLOR = "highlight_color"
 const val HIGHLIGHT_COLOR_DARK = "highlight_color_dark"
 
+// The surfaces the 1.1.09 spec introduces: the app-wide background (toolbars, list, popup), the
+// conversation page body (which the search box shares) and the received message bubble.
+// Same light/dark pairing as the rest.
+const val DEFAULT_BACKGROUND_COLOR = "default_background_color"
+const val DEFAULT_BACKGROUND_COLOR_DARK = "default_background_color_dark"
+const val THREAD_BACKGROUND_COLOR = "thread_background_color"
+const val THREAD_BACKGROUND_COLOR_DARK = "thread_background_color_dark"
+const val RECEIVED_BUBBLE_BACKGROUND_COLOR = "received_bubble_background_color"
+const val RECEIVED_BUBBLE_BACKGROUND_COLOR_DARK = "received_bubble_background_color_dark"
+
 /**
  * Theme of the app: follow the device, always light or always dark (1.0.9 spec, default light).
  * Applied through `AppCompatDelegate.setDefaultNightMode`, which is what commons' dynamic theme
@@ -126,9 +136,32 @@ val DEFAULT_COPYABLE_TEXT_COLOR_DARK = 0xff4caf50.toInt()
 val DEFAULT_LINK_TEXT_COLOR_DARK = 0xff4d99e0.toInt()
 val DEFAULT_HIGHLIGHT_COLOR_DARK = 0xff4caf50.toInt()
 
+/**
+ * Background defaults (1.1.09 spec). The light pair matches what the app effectively looked like
+ * before (a white surface and the #F2F2F2 conversation page the 1.0.2 spec asked for); the dark
+ * pair is the same thing mirrored. `@color/thread_page_background` keeps the same two values, since
+ * it is what the search-box drawable falls back to before the runtime colours are applied.
+ */
+val DEFAULT_DEFAULT_BACKGROUND_COLOR = 0xffffffff.toInt()
+val DEFAULT_DEFAULT_BACKGROUND_COLOR_DARK = 0xff000000.toInt()
+val DEFAULT_THREAD_BACKGROUND_COLOR = 0xfff2f2f2.toInt()
+val DEFAULT_THREAD_BACKGROUND_COLOR_DARK = 0xff121212.toInt()
+
+/**
+ * The received bubble (1.1.09 spec). White on light, black on dark - the same defaults as the
+ * default background, which is what the bubble effectively used before (`getProperBackgroundColor`)
+ * once the theme left the dynamic path.
+ */
+val DEFAULT_RECEIVED_BUBBLE_BACKGROUND_COLOR = 0xffffffff.toInt()
+val DEFAULT_RECEIVED_BUBBLE_BACKGROUND_COLOR_DARK = 0xff000000.toInt()
+
 private const val PATH = "org.fossify.org.fossify.messages.action."
 const val MARK_AS_READ = PATH + "mark_as_read"
 const val REPLY = PATH + "reply"
+
+/** Action of the notification's "copy verification code" button (1.1.09 spec). */
+const val COPY_VERIFICATION_CODE = PATH + "copy_verification_code"
+const val VERIFICATION_CODE = "verification_code"
 
 // view types for the thread list view
 const val THREAD_RECEIVED_MESSAGE = 2

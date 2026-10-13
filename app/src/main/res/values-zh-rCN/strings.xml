@@ -46,6 +46,7 @@
     <string name="channel_received_sms">收到的短信</string>
     <string name="new_message">新信息</string>
     <string name="mark_as_read">标记为已读</string>
+    <string name="copy_verification_code">复制验证码</string>
     <string name="mark_as_unread">标记为未读</string>
     <string name="me">我</string>
     <string name="unarchive">取消归档</string>
@@ -141,6 +142,9 @@
     <string name="appearance_thread_info">会话短信信息</string>
     <string name="appearance_link_color">链接颜色</string>
     <string name="appearance_highlight_color">高亮色</string>
+    <string name="appearance_default_background">默认背景色</string>
+    <string name="appearance_thread_background">会话背景色</string>
+    <string name="appearance_received_bubble_background">对方气泡背景色</string>
     <string name="appearance_theme">主题</string>
     <string name="appearance_theme_system">跟随系统</string>
     <string name="appearance_theme_light">亮主题</string>

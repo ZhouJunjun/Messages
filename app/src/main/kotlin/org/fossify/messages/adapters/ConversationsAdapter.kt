@@ -5,7 +5,7 @@ import android.text.TextUtils
 import android.view.Menu
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.extensions.addBlockedNumber
-import org.fossify.commons.extensions.copyToClipboard
+import org.fossify.messages.helpers.copyQuietly
 import org.fossify.commons.extensions.launchActivityIntent
 import org.fossify.commons.extensions.notificationManager
 import org.fossify.commons.helpers.KEY_PHONE
@@ -123,7 +123,7 @@ class ConversationsAdapter(
 
     private fun copyNumberToClipboard() {
         val conversation = getSelectedItems().firstOrNull() ?: return
-        activity.copyToClipboard(conversation.phoneNumber)
+        copyQuietly(activity, conversation.phoneNumber)
         finishActMode()
     }
 

@@ -61,6 +61,29 @@ class CustomAppearanceActivity : SimpleActivity() {
 
         addThemeRow()
 
+        // 1.1.09 spec: the surfaces everything else sits on. The toolbars, the list and the
+        // overflow popup all read the "default background", the conversation page body and the
+        // search box read the "conversation background", and the received message bubble has its
+        // own colour - so these entries replace what used to be the theme's own background colour.
+        addRow(
+            R.string.appearance_default_background,
+            null,
+            IntSetting({ appearance.defaultBackgroundColorLight }, { appearance.defaultBackgroundColorLight = it }),
+            IntSetting({ appearance.defaultBackgroundColorDark }, { appearance.defaultBackgroundColorDark = it })
+        )
+        addRow(
+            R.string.appearance_thread_background,
+            null,
+            IntSetting({ appearance.threadBackgroundColorLight }, { appearance.threadBackgroundColorLight = it }),
+            IntSetting({ appearance.threadBackgroundColorDark }, { appearance.threadBackgroundColorDark = it })
+        )
+        addRow(
+            R.string.appearance_received_bubble_background,
+            null,
+            IntSetting({ appearance.receivedBubbleBackgroundColorLight }, { appearance.receivedBubbleBackgroundColorLight = it }),
+            IntSetting({ appearance.receivedBubbleBackgroundColorDark }, { appearance.receivedBubbleBackgroundColorDark = it })
+        )
+
         addRow(
             R.string.appearance_home_title,
             IntSetting({ appearance.homeTitleTextSize }, { appearance.homeTitleTextSize = it }),

@@ -54,6 +54,7 @@ import org.fossify.messages.R
 import org.fossify.messages.databases.MessagesDatabase
 import org.fossify.messages.helpers.AttachmentUtils.parseAttachmentNames
 import org.fossify.messages.helpers.Config
+import org.fossify.messages.helpers.extractVerificationCode
 import org.fossify.messages.helpers.FILE_SIZE_NONE
 import org.fossify.messages.helpers.IMAGE_MESSAGE_SNIPPET
 import org.fossify.messages.helpers.MAX_MESSAGE_LENGTH
@@ -1404,7 +1405,10 @@ fun Context.showReceivedMessageNotification(
             body = body,
             threadId = threadId,
             bitmap = bitmap,
-            sender = senderName
+            sender = senderName,
+            // 1.1.09 spec: only the incoming path asks for the verification-code button, so a
+            // direct reply that happens to quote 验证码 can never trigger it
+            verificationCode = extractVerificationCode(body)
         )
     }
 }

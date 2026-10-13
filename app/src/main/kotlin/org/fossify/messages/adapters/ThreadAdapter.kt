@@ -39,9 +39,8 @@ import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
-import org.fossify.commons.extensions.copyToClipboard
+import org.fossify.messages.helpers.copyQuietly
 import org.fossify.commons.extensions.getContrastColor
-import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getTextSize
 import org.fossify.commons.extensions.getTimeFormat
@@ -297,7 +296,7 @@ class ThreadAdapter(
         }
 
         if (textToCopy.isNotEmpty()) {
-            activity.copyToClipboard(textToCopy)
+            copyQuietly(activity, textToCopy)
         }
     }
 
@@ -677,7 +676,8 @@ class ThreadAdapter(
             threadMessageBubble.apply {
                 background = bubbleBackground(
                     shapeRes = R.drawable.item_received_background,
-                    color = activity.getProperBackgroundColor(),
+                    // 1.1.09 spec: the received bubble has its own colour setting now
+                    color = activity.config.receivedBubbleBackgroundColor,
                     highlighted = message.id == highlightedMessageId,
                 )
             }

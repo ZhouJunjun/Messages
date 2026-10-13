@@ -318,6 +318,52 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(HIGHLIGHT_COLOR_DARK, DEFAULT_HIGHLIGHT_COLOR_DARK)
         set(value) = prefs.edit().putInt(HIGHLIGHT_COLOR_DARK, value).apply()
 
+    // backgrounds (1.1.09 spec): the app-wide surface - top bar, list, popup menu - and the
+    // conversation page body, which the search box shares. Same light/dark pairing as the rest.
+    var defaultBackgroundColor: Int
+        get() = if (isDarkAppearance) defaultBackgroundColorDark else defaultBackgroundColorLight
+        set(value) {
+            if (isDarkAppearance) defaultBackgroundColorDark = value else defaultBackgroundColorLight = value
+        }
+
+    var defaultBackgroundColorLight: Int
+        get() = prefs.getInt(DEFAULT_BACKGROUND_COLOR, DEFAULT_DEFAULT_BACKGROUND_COLOR)
+        set(value) = prefs.edit().putInt(DEFAULT_BACKGROUND_COLOR, value).apply()
+
+    var defaultBackgroundColorDark: Int
+        get() = prefs.getInt(DEFAULT_BACKGROUND_COLOR_DARK, DEFAULT_DEFAULT_BACKGROUND_COLOR_DARK)
+        set(value) = prefs.edit().putInt(DEFAULT_BACKGROUND_COLOR_DARK, value).apply()
+
+    var threadBackgroundColor: Int
+        get() = if (isDarkAppearance) threadBackgroundColorDark else threadBackgroundColorLight
+        set(value) {
+            if (isDarkAppearance) threadBackgroundColorDark = value else threadBackgroundColorLight = value
+        }
+
+    var threadBackgroundColorLight: Int
+        get() = prefs.getInt(THREAD_BACKGROUND_COLOR, DEFAULT_THREAD_BACKGROUND_COLOR)
+        set(value) = prefs.edit().putInt(THREAD_BACKGROUND_COLOR, value).apply()
+
+    var threadBackgroundColorDark: Int
+        get() = prefs.getInt(THREAD_BACKGROUND_COLOR_DARK, DEFAULT_THREAD_BACKGROUND_COLOR_DARK)
+        set(value) = prefs.edit().putInt(THREAD_BACKGROUND_COLOR_DARK, value).apply()
+
+    // the received message bubble (1.1.09 spec): it used to follow the theme's own background,
+    // which is why it now has its own light/dark pair like the two surfaces above
+    var receivedBubbleBackgroundColor: Int
+        get() = if (isDarkAppearance) receivedBubbleBackgroundColorDark else receivedBubbleBackgroundColorLight
+        set(value) {
+            if (isDarkAppearance) receivedBubbleBackgroundColorDark = value else receivedBubbleBackgroundColorLight = value
+        }
+
+    var receivedBubbleBackgroundColorLight: Int
+        get() = prefs.getInt(RECEIVED_BUBBLE_BACKGROUND_COLOR, DEFAULT_RECEIVED_BUBBLE_BACKGROUND_COLOR)
+        set(value) = prefs.edit().putInt(RECEIVED_BUBBLE_BACKGROUND_COLOR, value).apply()
+
+    var receivedBubbleBackgroundColorDark: Int
+        get() = prefs.getInt(RECEIVED_BUBBLE_BACKGROUND_COLOR_DARK, DEFAULT_RECEIVED_BUBBLE_BACKGROUND_COLOR_DARK)
+        set(value) = prefs.edit().putInt(RECEIVED_BUBBLE_BACKGROUND_COLOR_DARK, value).apply()
+
     var customNotifications: Set<String>
         get() = prefs.getStringSet(CUSTOM_NOTIFICATIONS, HashSet<String>())!!
         set(customNotifications) = prefs.edit()
